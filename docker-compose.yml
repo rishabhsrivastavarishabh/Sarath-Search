@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: sarath-db
+    environment:
+      POSTGRES_USER: sarath_user
+      POSTGRES_PASSWORD: sarath_password
+      POSTGRES_DB: sarath_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: sarath-redis
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: sarath-backend
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgres://sarath_user:sarath_password@db:5432/sarath_db
+      REDIS_URL: redis://redis:6379
+      PORT: 5000
+    depends_on:
+      - db
+      - redis
+
+  crawler:
+    build:
+      context: .
+      dockerfile: docker/crawler.Dockerfile
+    container_name: sarath-crawler
+    environment:
+      DATABASE_URL: postgres://sarath_user:sarath_password@db:5432/sarath_db
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - db
+      - redis
+
+  indexer:
+    build:
+      context: .
+      dockerfile: docker/indexer.Dockerfile
+    container_name: sarath-indexer
+    environment:
+      DATABASE_URL: postgres://sarath_user:sarath_password@db:5432/sarath_db
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: sarath-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:5000/api
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
