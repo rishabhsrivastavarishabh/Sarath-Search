@@ -1,1 +1,1 @@
-# Sarath Search is a Search engine this Devlope By Rishabh Srivastava
+# Sarath Search is a search engines developed by Rishabh Srivastava
