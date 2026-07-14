@@ -1,0 +1,32 @@
+{
+  "name": "sarath-search-engine",
+  "version": "1.0.0",
+  "description": "A complete local search engine built from scratch",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "crawler",
+    "indexer",
+    "search-core",
+    "analytics"
+  ],
+  "scripts": {
+    "install:all": "npm install",
+    "dev:backend": "npm run dev -w backend",
+    "dev:frontend": "npm run dev -w frontend",
+    "dev:crawler": "npm run dev -w crawler",
+    "dev:indexer": "npm run dev -w indexer",
+    "start:all": "docker-compose up -d"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.42.2",
+    "lucide-react": "^1.24.0",
+    "tailwind-merge": "^3.6.0"
+  }
+}
