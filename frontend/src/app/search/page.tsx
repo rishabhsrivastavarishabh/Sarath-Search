@@ -1,15 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Settings, Bell, User, Menu, ExternalLink, Bookmark, Share2, Clock, FileText } from 'lucide-react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { Search, Settings, Bell, User, Menu, ExternalLink, Bookmark, Share2, Clock, FileText, Image, Sparkles, ArrowRight, TrendingUp } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { TRENDING_TOPICS, RELATED_SEARCHES } from '@/lib/mock-data';
 
 interface SearchResult {
   id: number;
@@ -21,10 +17,11 @@ interface SearchResult {
 
 export default function SearchResults() {
     const searchParams = useSearchParams();
+    const router = useRouter();
     const query = searchParams.get('q') || '';
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(true);
-    const [suggestions, setSuggestions] = useState<string[]>([]);
+    const [navQuery, setNavQuery] = useState(query);
 
     useEffect(() => {
         async function fetchResults() {
@@ -42,6 +39,12 @@ export default function SearchResults() {
         fetchResults();
     }, [query]);
 
+    const handleNavSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter' && navQuery.trim()) {
+            router.push(`/search?q=${encodeURIComponent(navQuery)}`);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col transition-colors duration-300">
             {/* Top Navigation Bar */}
@@ -49,7 +52,7 @@ export default function SearchResults() {
                 <div className="flex items-center gap-6">
                     <div
                         className="text-2xl font-bold tracking-tighter cursor-pointer hover:opacity-80 transition-opacity"
-                        onClick={() => window.location.href = '/'}
+                        onClick={() => router.push('/')}
                     >
                         Sarath
                     </div>
@@ -59,8 +62,11 @@ export default function SearchResults() {
                         </div>
                         <input
                             type="text"
-                            defaultValue={query}
+                            value={navQuery}
+                            onChange={(e) => setNavQuery(e.target.value)}
+                            onKeyDown={handleNavSearch}
                             className="w-full bg-card dark:bg-zinc-900 border border-border dark:border-zinc-800 rounded-full py-2 pl-11 pr-4 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            placeholder="Search again..."
                         />
                     </div>
                 </div>
@@ -95,7 +101,7 @@ export default function SearchResults() {
                 <main className="flex-1 p-4 md:p-8 max-w-5xl mx-auto w-full">
                     <header className="mb-8">
                         <h2 className="text-2xl font-medium flex items-center gap-2">
-                            Search results for <span className="text-primary italic">"{query}"</span>
+                            Search results for <span className="text-primary italic">"{query}"</span}
                         </h2>
                         <p className="text-sm text-muted-foreground mt-1">About {results.length} results found in 0.04s</p>
                     </header>
@@ -170,7 +176,7 @@ export default function SearchResults() {
                             </p>
                             <div className="flex gap-3">
                                 <button
-                                    onClick={() => window.location.href = '/'}
+                                    onClick={() => router.push('/')}
                                     className="px-6 py-2 bg-primary text-white rounded-full font-medium hover:bg-primary-dark transition-all"
                                 >
                                     Back to Home
@@ -187,8 +193,12 @@ export default function SearchResults() {
                             <Sparkles className="w-4 h-4 text-primary" /> Related Searches
                         </h3>
                         <div className="flex flex-col gap-2">
-                            {['Local SEO', 'Web Crawling', 'Search Indexing', 'BM25 Algorithm'].map(s => (
-                                <div key={s} className="p-3 rounded-xl bg-card dark:bg-zinc-900 border border-border text-sm cursor-pointer hover:border-primary/50 hover:text-primary transition-all group">
+                            {RELATED_SEARCHES.map(s => (
+                                <div
+                                    key={s}
+                                    onClick={() => router.push(`/search?q=${encodeURIComponent(s)}`)}
+                                    className="p-3 rounded-xl bg-card dark:bg-zinc-900 border border-border text-sm cursor-pointer hover:border-primary/50 hover:text-primary transition-all group"
+                                >
                                     <div className="flex justify-between items-center">
                                         {s}
                                         <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-all" />
@@ -203,15 +213,19 @@ export default function SearchResults() {
                             <TrendingUp className="w-4 h-4 text-primary" /> Trending Topics
                         </h3>
                         <div className="flex flex-wrap gap-2">
-                            {['#NextJS', '#TypeScript', '#OpenSource', '#LocalAI', '#WebDev'].map(t => (
-                                <span key={t} className="px-3 py-1 rounded-full bg-muted text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-primary transition-all cursor-pointer">
+                            {TRENDING_TOPICS.map(t => (
+                                <span
+                                    key={t}
+                                    onClick={() => router.push(`/search?q=${encodeURIComponent(t.replace('#', ''))}`)}
+                                    className="px-3 py-1 rounded-full bg-muted text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-primary transition-all cursor-pointer"
+                                >
                                     {t}
                                 </span>
                             ))}
                         </div>
                     </section>
                 </aside>
-            </div>
+            </div
         </div>
     );
 }

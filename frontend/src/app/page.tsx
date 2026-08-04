@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Mic, Image, Sparkles, ArrowRight, TrendingUp, Clock, LayoutGrid } from 'lucide-react';
+import { Search, Mic, Image, Sparkles, ArrowRight, TrendingUp, Clock, LayoutGrid, Shield, Zap, Globe } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { LANDING_TRENDS, LANDING_RECENT } from '@/lib/mock-data';
 
 export default function LandingPage() {
     const [query, setQuery] = useState('');
@@ -16,13 +17,17 @@ export default function LandingPage() {
         }
     };
 
+    const handleQuickSearch = (q: string) => {
+        router.push(`/search?q=${encodeURIComponent(q)}`);
+    };
+
     return (
         <div className="min-h-screen relative overflow-hidden bg-background text-foreground transition-colors duration-300">
             {/* Background Elements */}
             <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/10 rounded-full blur-3xl animate-float" />
             <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-secondary/10 rounded-full blur-3xl animate-float" style={{ animationDelay: '3s' }} />
 
-            <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4">
+            <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4 pt-20">
                 {/* Logo Section */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -66,7 +71,7 @@ export default function LandingPage() {
                             <button type="submit" className="bg-primary hover:bg-primary-dark text-white p-2 rounded-full transition-all duration-300 hover:scale-110 shadow-lg shadow-primary/30">
                                 <ArrowRight className="w-5 h-5" />
                             </button>
-                        </div>
+                        </div}
                     </div>
                 </motion.form>
 
@@ -77,29 +82,86 @@ export default function LandingPage() {
                     transition={{ duration: 0.8, delay: 0.4 }}
                     className="mt-12 flex flex-wrap justify-center gap-4 max-w-4xl"
                 >
-                    <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card dark:bg-zinc-900 border border-border dark:border-zinc-800 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all cursor-pointer group">
-                        <TrendingUp className="w-4 h-4 group-hover:text-primary transition-colors" />
-                        <span>Trending Searches</span>
+                    <div className="flex flex-col items-center gap-3">
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            <TrendingUp className="w-3 h-3" /> Trending
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-2">
+                            {LANDING_TRENDS.map(item => (
+                                <button
+                                    key={item.label}
+                                    onClick={() => handleQuickSearch(item.query)}
+                                    className="px-4 py-2 rounded-full bg-card dark:bg-zinc-900 border border-border dark:border-zinc-800 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all cursor-pointer group"
+                                >
+                                    {item.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card dark:bg-zinc-900 border border-border dark:border-zinc-800 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all cursor-pointer group">
-                        <Clock className="w-4 h-4 group-hover:text-primary transition-colors" />
-                        <span>Recent Activity</span>
+
+                    <div className="flex flex-col items-center gap-3">
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            <Clock className="w-3 h-3" /> Recent
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-2">
+                            {LANDING_RECENT.map(item => (
+                                <button
+                                    key={item.label}
+                                    onClick={() => handleQuickSearch(item.query)}
+                                    className="px-4 py-2 rounded-full bg-card dark:bg-zinc-900 border border-border dark:border-zinc-800 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all cursor-pointer group"
+                                >
+                                    {item.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card dark:bg-zinc-900 border border-border dark:border-zinc-800 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all cursor-pointer group">
-                        <LayoutGrid className="w-4 h-4 group-hover:text-primary transition-colors" />
-                        <span>Explore Categories</span>
+                </motion.div>
+
+                {/* Features Section */}
+                <motion.div
+                    initial={{ opacity: 0, y: 40 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8, delay: 0.6 }}
+                    className="mt-24 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl w-full px-6"
+                >
+                    <div className="p-8 rounded-3xl bg-card dark:bg-zinc-900/50 border border-border dark:border-zinc-800 hover:border-primary/30 transition-all group">
+                        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary mb-6 group-hover:scale-110 transition-transform">
+                            <Shield className="w-6 h-6" />
+                        </div>
+                        <h3 className="text-xl font-bold mb-3">Local Privacy</h3>
+                        <p className="text-muted-foreground leading-relaxed">
+                            Your data stays on your machine. No cloud tracking, no data harvesting, just pure local intelligence.
+                        </p>
+                    </div>
+                    <div className="p-8 rounded-3xl bg-card dark:bg-zinc-900/50 border border-border dark:border-zinc-800 hover:border-primary/30 transition-all group">
+                        <div className="w-12 h-12 rounded-2xl bg-secondary/10 flex items-center justify-center text-secondary mb-6 group-hover:scale-110 transition-transform">
+                            <Zap className="w-6 h-6" />
+                        </div>
+                        <h3 className="text-xl font-bold mb-3">Blazing Fast</h3>
+                        <p className="text-muted-foreground leading-relaxed">
+                            Instantaneous search results powered by a local BM25 index, bypassing network latency entirely.
+                        </p>
+                    </div>
+                    <div className="p-8 rounded-3xl bg-card dark:bg-zinc-900/50 border border-border dark:border-zinc-800 hover:border-primary/30 transition-all group">
+                        <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent mb-6 group-hover:scale-110 transition-transform">
+                            <Globe className="w-6 h-6" />
+                        </div>
+                        <h3 className="text-xl font-bold mb-3">Full Web Control</h3>
+                        <p className="text-muted-foreground leading-relaxed">
+                            Crawl exactly what you want. Build your own knowledge base of the web from scratch.
+                        </p>
                     </div>
                 </motion.div>
 
                 {/* Footer-like bottom sections */}
-                <div className="absolute bottom-8 left-0 right-0 px-8 flex justify-between items-center text-xs text-muted-foreground font-medium tracking-wider">
+                <div className="mt-24 mb-8 left-0 right-0 px-8 flex justify-between items-center text-xs text-muted-foreground font-medium tracking-wider">
                     <div className="flex gap-6">
                         <a href="#" className="hover:text-foreground transition-colors">About</a>
                         <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
                         <a href="#" className="hover:text-foreground transition-colors">Terms</a>
                     </div>
                     <div className="flex gap-6 items-center">
-                        <span>v1.0.0-beta</span>
+                        <span className="opacity-50">v1.0.0-beta</span>
                         <a href="https://github.com" className="hover:text-foreground transition-colors">GitHub</a>
                     </div>
                 </div>
