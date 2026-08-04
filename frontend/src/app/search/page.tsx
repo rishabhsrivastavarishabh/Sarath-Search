@@ -1,243 +1,336 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Settings, Bell, User, Menu, ExternalLink, Bookmark, Share2, Clock, FileText, Image, Sparkles, ArrowRight, TrendingUp } from 'lucide-react';
+import {
+  Search,
+  ExternalLink,
+  Bookmark,
+  Share2,
+  Clock,
+  Copy,
+  Check,
+  Globe,
+  Sparkles,
+  ArrowRight,
+  BookOpen
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { SearchResultItem } from '@/lib/search-provider';
+import { AiAnswerData } from '@/lib/ai-answer';
+import { AiAnswerCard } from '@/components/AiAnswerCard';
+import { Header } from '@/components/Header';
+import { Sidebar } from '@/components/Sidebar';
 import { TRENDING_TOPICS, RELATED_SEARCHES } from '@/lib/mock-data';
 
-interface SearchResult {
-  id: number;
-  title: string;
-  url: string;
-  meta_description: string;
-  score: number;
+function SearchResultsContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const query = searchParams.get('q') || '';
+  const initialCategory = searchParams.get('category') || 'all';
+
+  const [results, setResults] = useState<SearchResultItem[]>([]);
+  const [aiAnswer, setAiAnswer] = useState<AiAnswerData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [navQuery, setNavQuery] = useState(query);
+  const [activeCategory, setActiveCategory] = useState<string>(initialCategory);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setNavQuery(query);
+    async function fetchResults() {
+      if (!query.trim()) {
+        setResults([]);
+        setAiAnswer(null);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(activeCategory)}`);
+        if (!res.ok) throw new Error('Search API request failed');
+        const data = await res.json();
+        setResults(data.results || []);
+        setAiAnswer(data.ai_answer || null);
+      } catch (e) {
+        console.warn('Search error', e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchResults();
+  }, [query, activeCategory]);
+
+  const handleNavSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (navQuery.trim()) {
+      router.push(`/search?q=${encodeURIComponent(navQuery)}&category=${encodeURIComponent(activeCategory)}`);
+    }
+  };
+
+  const handleCopyUrl = (id: string, url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const toggleSave = (id: string) => {
+    if (savedIds.includes(id)) {
+      setSavedIds(savedIds.filter((i) => i !== id));
+    } else {
+      setSavedIds([...savedIds, id]);
+    }
+  };
+
+  const handleCategoryChange = (cat: string) => {
+    setActiveCategory(cat);
+    router.push(`/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(cat)}`);
+  };
+
+  return (
+    <div className="min-h-screen bg-background text-foreground flex flex-col bg-mesh-pattern font-sans">
+      <Header />
+
+      {/* Category Filter & Search Bar */}
+      <div className="bg-glass border-b border-white/10 px-6 py-2.5 backdrop-blur-md sticky top-[61px] z-30 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
+          <form onSubmit={handleNavSearch} className="relative w-full max-w-xl mr-4 group">
+            <Search className="w-4 h-4 text-zinc-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-purple-400 transition-colors" />
+            <input
+              type="text"
+              value={navQuery}
+              onChange={(e) => setNavQuery(e.target.value)}
+              className="w-full bg-zinc-900/90 border border-white/15 rounded-full py-2 pl-10 pr-10 text-xs text-white placeholder:text-zinc-500 focus:border-purple-400 outline-none transition-all"
+              placeholder="Search anything..."
+            />
+            <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-purple-400 hover:text-white">
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </form>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {['all', 'images', 'videos', 'news', 'docs', 'maps', 'shopping'].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => handleCategoryChange(cat)}
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-bold capitalize transition-all whitespace-nowrap',
+                  activeCategory === cat
+                    ? 'bg-gradient-to-r from-purple-600 to-cyan-500 text-white shadow-md'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                )}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-1 max-w-7xl mx-auto w-full px-4 md:px-6 py-6 gap-8">
+        {/* Left Sidebar */}
+        <Sidebar currentCategory={activeCategory} onSelectCategory={handleCategoryChange} />
+
+        {/* Main Search Results Area */}
+        <main className="flex-1 max-w-3xl w-full">
+          <header className="mb-6 flex justify-between items-end border-b border-white/10 pb-4">
+            <div>
+              <h2 className="text-xl md:text-2xl font-bold font-outfit text-white">
+                Results for <span className="text-gradient">"{query || 'all'}"</span>
+              </h2>
+              <p className="text-xs text-zinc-400 mt-1 flex items-center gap-2">
+                <span>Found about {results.length} results</span>
+                <span>•</span>
+                <span className="text-purple-400 font-semibold">Sarath Search</span>
+              </p>
+            </div>
+          </header>
+
+          {/* AI Answer Synthesis Card */}
+          {aiAnswer && !loading && (
+            <AiAnswerCard
+              data={aiAnswer}
+              onSelectQuery={(q) => router.push(`/search?q=${encodeURIComponent(q)}`)}
+            />
+          )}
+
+          {loading ? (
+            <div className="space-y-6">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="p-6 rounded-3xl bg-glass-card border border-white/5 animate-pulse space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-white/10" />
+                    <div className="h-4 w-1/4 bg-white/10 rounded" />
+                  </div>
+                  <div className="h-6 w-3/4 bg-white/15 rounded" />
+                  <div className="h-4 w-full bg-white/10 rounded" />
+                  <div className="h-4 w-2/3 bg-white/10 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : results.length > 0 ? (
+            <div className="space-y-4">
+              <AnimatePresence>
+                {results.map((result, index) => (
+                  <motion.div
+                    key={result.id}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="group p-6 rounded-3xl bg-glass-card hover:bg-glass border border-white/10 hover:border-purple-400/40 transition-all duration-300 shadow-xl hover:-translate-y-0.5"
+                  >
+                    <div className="flex items-start gap-4">
+                      {/* Real Favicon */}
+                      <img
+                        src={result.favicon_url}
+                        alt={result.domain}
+                        className="w-9 h-9 rounded-xl border border-white/10 bg-zinc-950 p-1 object-contain flex-shrink-0"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://www.google.com/s2/favicons?domain=google.com&sz=64';
+                        }}
+                      />
+
+                      <div className="flex-1 min-w-0">
+                        {/* Domain & Published Badge */}
+                        <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                          <span className="text-xs text-purple-300 font-semibold px-2.5 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20">
+                            {result.domain}
+                          </span>
+                          <span className="text-xs text-zinc-500">•</span>
+                          <span className="text-xs text-zinc-400 flex items-center gap-1">
+                            <BookOpen className="w-3 h-3 text-cyan-400" /> {result.reading_time_min} min read
+                          </span>
+                          {result.published_date && (
+                            <>
+                              <span className="text-xs text-zinc-500">•</span>
+                              <span className="text-xs text-zinc-400">{result.published_date}</span>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Result Title */}
+                        <h3 className="text-lg font-bold text-white hover:text-purple-400 transition-colors font-outfit mb-2 flex items-center gap-2">
+                          <a href={result.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                            {result.title}
+                          </a>
+                          <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover:text-purple-400 transition-colors opacity-0 group-hover:opacity-100" />
+                        </h3>
+
+                        {/* Description */}
+                        <p className="text-xs md:text-sm text-zinc-300 line-clamp-2 leading-relaxed mb-4">
+                          {result.meta_description}
+                        </p>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-3 text-xs font-medium text-zinc-400">
+                          <a
+                            href={result.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-600/20 text-purple-300 border border-purple-500/30 hover:bg-purple-600 hover:text-white transition-all font-semibold"
+                          >
+                            <Globe className="w-3.5 h-3.5" /> Visit Site
+                          </a>
+
+                          <button
+                            onClick={() => toggleSave(result.id)}
+                            className={cn(
+                              'flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all',
+                              savedIds.includes(result.id)
+                                ? 'bg-purple-500/20 border-purple-400 text-purple-300 font-bold'
+                                : 'bg-white/5 border-white/10 hover:border-white/20 hover:text-white'
+                            )}
+                          >
+                            <Bookmark className="w-3.5 h-3.5" />
+                            {savedIds.includes(result.id) ? 'Saved' : 'Save'}
+                          </button>
+
+                          <button
+                            onClick={() => handleCopyUrl(result.id, result.url)}
+                            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 hover:border-white/20 hover:text-white transition-all"
+                          >
+                            {copiedId === result.id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            {copiedId === result.id ? 'Copied!' : 'Copy Link'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          ) : (
+            <div className="p-12 rounded-3xl bg-glass-card border border-white/10 text-center">
+              <Search className="w-12 h-12 text-zinc-500 mx-auto mb-4" />
+              <h3 className="text-xl font-bold text-white mb-2 font-outfit">No search results found</h3>
+              <p className="text-xs text-zinc-400 max-w-sm mx-auto mb-6">
+                Try searching for different keywords or select another category filter above.
+              </p>
+              <button
+                onClick={() => router.push('/')}
+                className="px-6 py-2 bg-gradient-to-r from-purple-600 to-cyan-500 text-white rounded-full text-xs font-semibold transition-all shadow-lg shadow-purple-500/25"
+              >
+                Return to Home
+              </button>
+            </div>
+          )}
+        </main>
+
+        {/* Right Sidebar */}
+        <aside className="hidden xl:flex flex-col w-72 gap-6 sticky top-20 h-[calc(100vh-110px)]">
+          <section className="p-5 rounded-3xl bg-glass-card border border-white/10">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-purple-300 mb-4 flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-purple-400" /> Related Searches
+            </h3>
+            <div className="flex flex-col gap-2">
+              {RELATED_SEARCHES.map((s) => (
+                <div
+                  key={s}
+                  onClick={() => router.push(`/search?q=${encodeURIComponent(s)}`)}
+                  className="p-3 rounded-2xl bg-white/5 border border-white/5 text-xs text-zinc-300 cursor-pointer hover:border-purple-400/50 hover:text-purple-300 transition-all flex justify-between items-center group"
+                >
+                  <span>{s}</span>
+                  <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-purple-400" />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="p-5 rounded-3xl bg-glass-card border border-white/10">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-cyan-400 mb-4 flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-cyan-400" /> Trending Topics
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {TRENDING_TOPICS.map((t) => (
+                <span
+                  key={t}
+                  onClick={() => router.push(`/search?q=${encodeURIComponent(t.replace('#', ''))}`)}
+                  className="px-3 py-1 rounded-full bg-white/5 text-xs font-medium text-zinc-400 hover:bg-cyan-500/20 hover:text-cyan-300 transition-all cursor-pointer border border-white/5 hover:scale-105"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          </section>
+        </aside>
+      </div>
+    </div>
+  );
 }
 
 export default function SearchResults() {
-    const searchParams = useSearchParams();
-    const router = useRouter();
-    const query = searchParams.get('q') || '';
-    const [results, setResults] = useState<SearchResult[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [navQuery, setNavQuery] = useState(query);
-
-    useEffect(() => {
-        async function fetchResults() {
-            setLoading(true);
-            try {
-                const res = await fetch(`http://localhost:5000/api/search?q=${encodeURIComponent(query)}`);
-                const data = await res.json();
-                setResults(data.results || []);
-            } catch (e) {
-                console.error("Search error", e);
-            } finally {
-                setLoading(false);
-            }
-        }
-        fetchResults();
-    }, [query]);
-
-    const handleNavSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter' && navQuery.trim()) {
-            router.push(`/search?q=${encodeURIComponent(navQuery)}`);
-        }
-    };
-
-    return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col transition-colors duration-300">
-            {/* Top Navigation Bar */}
-            <nav className="sticky top-0 z-50 flex items-center justify-between px-4 py-3 bg-background/80 backdrop-blur-md border-b border-border">
-                <div className="flex items-center gap-6">
-                    <div
-                        className="text-2xl font-bold tracking-tighter cursor-pointer hover:opacity-80 transition-opacity"
-                        onClick={() => router.push('/')}
-                    >
-                        Sarath
-                    </div>
-                    <div className="relative hidden md:flex items-center w-full max-w-2xl group">
-                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                            <Search className="w-4 h-4 text-muted-foreground" />
-                        </div>
-                        <input
-                            type="text"
-                            value={navQuery}
-                            onChange={(e) => setNavQuery(e.target.value)}
-                            onKeyDown={handleNavSearch}
-                            className="w-full bg-card dark:bg-zinc-900 border border-border dark:border-zinc-800 rounded-full py-2 pl-11 pr-4 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                            placeholder="Search again..."
-                        />
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                    <button className="p-2 hover:bg-card dark:hover:bg-zinc-800 rounded-full transition-colors relative">
-                        <Bell className="w-5 h-5 text-muted-foreground" />
-                        <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full border-2 border-background" />
-                    </button>
-                    <button className="p-2 hover:bg-card dark:hover:bg-zinc-800 rounded-full transition-colors">
-                        <Settings className="w-5 h-5 text-muted-foreground" />
-                    </button>
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-secondary cursor-pointer hover:ring-2 ring-primary/50 transition-all" />
-                </div>
-            </nav>
-
-            <div className="flex flex-1">
-                {/* Left Sidebar */}
-                <aside className="hidden lg:flex flex-col w-64 p-4 border-r border-border gap-2 sticky top-16 h-[calc(100vh-64px)]">
-                    <SidebarItem icon={<Search className="w-4 h-4" />} label="All" active />
-                    <SidebarItem icon={<Image className="w-4 h-4" />} label="Images" />
-                    <SidebarItem icon={<FileText className="w-4 h-4" />} label="Documents" />
-                    <SidebarItem icon={<Clock className="w-4 h-4" />} label="Recent" />
-                    <div className="mt-auto p-4 bg-card dark:bg-zinc-900 rounded-2xl border border-border">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Sarath Pro</p>
-                        <p className="text-xs text-muted-foreground mb-3">Get deeper local indexing and AI summaries.</p>
-                        <button className="w-full py-2 text-xs font-bold bg-primary text-white rounded-lg hover:bg-primary-dark transition-all">Upgrade</button>
-                    </div>
-                </aside>
-
-                {/* Main Content */}
-                <main className="flex-1 p-4 md:p-8 max-w-5xl mx-auto w-full">
-                    <header className="mb-8">
-                        <h2 className="text-2xl font-medium flex items-center gap-2">
-                            Search results for <span className="text-primary italic">"{query}"</span}
-                        </h2>
-                        <p className="text-sm text-muted-foreground mt-1">About {results.length} results found in 0.04s</p>
-                    </header>
-
-                    {loading ? (
-                        <div className="space-y-6">
-                            {[1, 2, 3, 4].map(i => (
-                                <div key={i} className="animate-pulse space-y-3">
-                                    <div className="h-4 w-1/3 bg-muted rounded" />
-                                    <div className="h-4 w-full bg-muted rounded" />
-                                    <div className="h-4 w-2/3 bg-muted rounded" />
-                                </div>
-                            ))}
-                        </div>
-                    ) : results.length > 0 ? (
-                        <div className="space-y-8">
-                            <AnimatePresence>
-                                {results.map((result, index) => (
-                                    <motion.div
-                                        key={result.id}
-                                        initial={{ opacity: 0, x: -20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: index * 0.05 }}
-                                        className="group relative p-4 rounded-2xl hover:bg-card dark:hover:bg-zinc-900 border border-transparent hover:border-border transition-all duration-300"
-                                    >
-                                        <div className="flex items-start gap-4">
-                                            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border border-border group-hover:border-primary/50 transition-colors">
-                                                {result.url.split('/')[2]?.[0]?.toUpperCase() || 'W'}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <a
-                                                        href={result.url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-lg font-medium text-foreground hover:text-primary transition-colors truncate"
-                                                    >
-                                                        {result.title || 'Untitled Page'}
-                                                    </a>
-                                                    <ExternalLink className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                </div>
-                                                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 truncate">
-                                                    <span className="text-primary/60 font-medium">{result.url}</span>
-                                                    <span>•</span>
-                                                    <span>Score: {result.score?.toFixed(2)}</span>
-                                                </div>
-                                                <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
-                                                    {result.meta_description || 'No description available for this page.'}
-                                                </p>
-                                                <div className="flex items-center gap-4 mt-3 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                                                    <button className="text-xs flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors">
-                                                        <Bookmark className="w-3 h-3" /> Save
-                                                    </button>
-                                                    <button className="text-xs flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors">
-                                                        <Share2 className="w-3 h-3" /> Share
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                ))}
-                            </AnimatePresence>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-center justify-center py-20 text-center">
-                            <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-6">
-                                <Search className="w-8 h-8 text-muted-foreground" />
-                            </div>
-                            <h3 className="text-xl font-semibold mb-2">No results found</h3>
-                            <p className="text-muted-foreground max-w-md mx-auto mb-8">
-                                We couldn't find any pages matching your search. Try different keywords or add more domains to crawl.
-                            </p>
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => router.push('/')}
-                                    className="px-6 py-2 bg-primary text-white rounded-full font-medium hover:bg-primary-dark transition-all"
-                                >
-                                    Back to Home
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </main>
-
-                {/* Right Sidebar */}
-                <aside className="hidden xl:flex flex-col w-80 p-6 border-l border-border gap-8 sticky top-16 h-[calc(100vh-64px)]">
-                    <section>
-                        <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-2">
-                            <Sparkles className="w-4 h-4 text-primary" /> Related Searches
-                        </h3>
-                        <div className="flex flex-col gap-2">
-                            {RELATED_SEARCHES.map(s => (
-                                <div
-                                    key={s}
-                                    onClick={() => router.push(`/search?q=${encodeURIComponent(s)}`)}
-                                    className="p-3 rounded-xl bg-card dark:bg-zinc-900 border border-border text-sm cursor-pointer hover:border-primary/50 hover:text-primary transition-all group"
-                                >
-                                    <div className="flex justify-between items-center">
-                                        {s}
-                                        <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-all" />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-
-                    <section>
-                        <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-2">
-                            <TrendingUp className="w-4 h-4 text-primary" /> Trending Topics
-                        </h3>
-                        <div className="flex flex-wrap gap-2">
-                            {TRENDING_TOPICS.map(t => (
-                                <span
-                                    key={t}
-                                    onClick={() => router.push(`/search?q=${encodeURIComponent(t.replace('#', ''))}`)}
-                                    className="px-3 py-1 rounded-full bg-muted text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-primary transition-all cursor-pointer"
-                                >
-                                    {t}
-                                </span>
-                            ))}
-                        </div>
-                    </section>
-                </aside>
-            </div
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+          <div className="animate-pulse text-purple-400 font-medium text-xs">Loading Sarath Search...</div>
         </div>
-    );
-}
-
-function SidebarItem({ icon, label, active = false }: { icon: React.ReactNode, label: string, active?: boolean }) {
-    return (
-        <div className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-all text-sm font-medium",
-            active ? "bg-primary text-white shadow-lg shadow-primary/20" : "text-muted-foreground hover:bg-card dark:hover:bg-zinc-800 hover:text-foreground"
-        )}>
-            {icon}
-            {label}
-        </div>
-    );
+      }
+    >
+      <SearchResultsContent />
+    </Suspense>
+  );
 }

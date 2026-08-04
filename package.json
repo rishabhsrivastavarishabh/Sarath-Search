@@ -3,27 +3,22 @@
   "version": "1.0.0",
   "description": "A complete local search engine built from scratch",
   "private": true,
-  "workspaces": [
-    "frontend",
-    "backend",
-    "crawler",
-    "indexer",
-    "search-core",
-    "analytics"
-  ],
   "scripts": {
-    "install:all": "npm install",
-    "dev:backend": "npm run dev -w backend",
-    "dev:frontend": "npm run dev -w frontend",
-    "dev:crawler": "npm run dev -w crawler",
-    "dev:indexer": "npm run dev -w indexer",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend",
     "start:all": "docker-compose up -d"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "next": "15.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.24.0",
