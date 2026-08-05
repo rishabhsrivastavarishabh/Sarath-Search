@@ -1,31 +1,34 @@
 export const TRENDING_TOPICS = [
-  '#NextJS',
-  '#TypeScript',
+  '#NextJS15',
+  '#AIOverview',
+  '#React19',
   '#OpenSource',
-  '#LocalAI',
-  '#WebDev',
-  '#React',
+  '#TypeScript',
+  '#WebSearch',
   '#TailwindCSS'
 ];
 
 export const RELATED_SEARCHES = [
-  'Local SEO',
-  'Web Crawling',
-  'Search Indexing',
-  'BM25 Algorithm',
-  'Vector Databases',
-  'RAG Systems'
+  'React Router v7',
+  'Sarath Search Console',
+  'Independent Web Crawler',
+  'BM25 Ranking Algorithm',
+  'Vector Search & RAG',
+  'OpenRouter AI Models'
 ];
 
 export const LANDING_TRENDS = [
-  { label: 'Local AI', query: 'local artificial intelligence' },
-  { label: 'Web Crawlers', query: 'how to build a web crawler' },
-  { label: 'Privacy Search', query: 'private search engines' },
-  { label: 'Next.js Tips', query: 'next.js app router patterns' },
+  { label: 'React Router v7', query: 'React Router' },
+  { label: 'Next.js 15', query: 'Next.js 15 features' },
+  { label: 'AI Overview', query: 'AI search engine' },
+  { label: 'MDN Web Docs', query: 'MDN web documentation' },
+  { label: 'GitHub Repos', query: 'github open source projects' },
+  { label: 'TypeScript', query: 'typescript documentation' },
 ];
 
 export const LANDING_RECENT = [
-  { label: 'Documentation', query: 'sarath documentation' },
-  { label: 'Admin Panel', query: 'admin dashboard settings' },
-  { label: 'API Reference', query: 'search api endpoints' },
+  { label: 'React Router', query: 'React Router' },
+  { label: 'Search Console', query: 'sarath search console' },
+  { label: 'OpenRouter AI', query: 'openrouter ai models' },
+  { label: 'Supabase Database', query: 'supabase database' },
 ];

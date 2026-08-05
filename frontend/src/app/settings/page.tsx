@@ -5,15 +5,28 @@ import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { Sidebar } from '@/components/Sidebar';
 import { supabase } from '@/lib/supabase';
-import { Settings as SettingsIcon, Moon, Shield, Sliders, Lock, LayoutDashboard, ArrowRight } from 'lucide-react';
+import { Settings as SettingsIcon, Moon, Shield, Sliders, Lock, LayoutDashboard, ArrowRight, Bot, Cpu } from 'lucide-react';
+
+const AI_MODELS = [
+  { id: 'google/gemini-3.6-flash', name: 'Google Gemini 3.6 Flash (Default)' },
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B' },
+  { id: 'google/gemini-2.0-flash-lite-001', name: 'Gemini 2.0 Flash Lite' },
+  { id: 'deepseek/deepseek-r1:free', name: 'DeepSeek R1 Reasoning' },
+  { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B Instruct' },
+  { id: 'qwen/qwen-2.5-coder-32b-instruct:free', name: 'Qwen 2.5 Coder 32B' },
+];
 
 export default function SettingsPage() {
   const router = useRouter();
   const [safeSearch, setSafeSearch] = useState(true);
   const [autoComplete, setAutoComplete] = useState(true);
+  const [selectedAiModel, setSelectedAiModel] = useState('google/gemini-3.6-flash');
   const [role, setRole] = useState('user');
 
   useEffect(() => {
+    const savedModel = localStorage.getItem('sarath_ai_model');
+    if (savedModel) setSelectedAiModel(savedModel);
+
     async function loadRole() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
@@ -27,6 +40,11 @@ export default function SettingsPage() {
     }
     loadRole();
   }, []);
+
+  const handleAiModelChange = (modelId: string) => {
+    setSelectedAiModel(modelId);
+    localStorage.setItem('sarath_ai_model', modelId);
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground bg-mesh-pattern flex flex-col font-sans">
@@ -60,7 +78,28 @@ export default function SettingsPage() {
               <SettingsIcon className="w-6 h-6 text-purple-400" /> Preferences & Settings
             </h1>
 
-            <div className="space-y-4 text-xs">
+            <div className="space-y-5 text-xs">
+              {/* OpenRouter AI Model Selection */}
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-purple-900/20 to-cyan-900/20 border border-purple-500/20 space-y-3">
+                <div className="flex items-center gap-2 text-white font-bold text-sm">
+                  <Bot className="w-5 h-5 text-purple-400" /> OpenRouter AI Overview Model
+                </div>
+                <p className="text-zinc-400">
+                  Select the AI model used to synthesize Web AI Overview search summaries:
+                </p>
+                <select
+                  value={selectedAiModel}
+                  onChange={(e) => handleAiModelChange(e.target.value)}
+                  className="w-full bg-zinc-950 border border-white/15 rounded-2xl px-4 py-2.5 text-xs text-white outline-none focus:border-purple-400 font-semibold"
+                >
+                  {AI_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="flex justify-between items-center py-3 border-b border-white/10">
                 <div>
                   <h4 className="font-bold text-white text-sm">Safe Search Filter</h4>

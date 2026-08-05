@@ -145,15 +145,6 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
                 Continue with Google
               </button>
 
-              <button
-                onClick={() => handleOAuthLogin('github')}
-                disabled={loading}
-                className="w-full py-2.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white transition-all flex items-center justify-center gap-3"
-              >
-                <GitBranch className="w-4 h-4 text-white" />
-                Continue with GitHub
-              </button>
-
               <div className="relative my-4 flex items-center justify-center">
                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10" /></div>
                 <span className="relative bg-zinc-900 px-3 text-[10px] uppercase font-bold text-zinc-500 tracking-widest">or email</span>

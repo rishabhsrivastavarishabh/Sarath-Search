@@ -1,2 +1,23 @@
-node_modules
-node_modules/ 
+# dependencies
+node_modules/
+frontend/node_modules/
+
+# build outputs
+frontend/.next/
+frontend/out/
+build/
+
+# environment variables
+*.env
+*.env.local
+frontend/.env.local
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Vercel
+.vercel
+frontend/.vercel

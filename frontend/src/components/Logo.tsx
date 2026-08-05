@@ -58,9 +58,6 @@ export function Logo({
         <div className="flex flex-col">
           <div className={cn('font-extrabold tracking-tight text-white font-outfit leading-none flex items-center', currentSize.text)}>
             Sar<span className="text-purple-400">a</span>th
-            <span className="ml-1.5 text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold tracking-normal">
-              2.O
-            </span>
           </div>
           {showTagline && (
             <span className={cn('font-bold tracking-[0.25em] text-cyan-400/90 uppercase mt-1', currentSize.tag)}>

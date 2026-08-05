@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -15,22 +15,67 @@ import { useRouter } from 'next/navigation';
 import { LANDING_TRENDS, LANDING_RECENT } from '@/lib/mock-data';
 import { Logo } from '@/components/Logo';
 import { Header } from '@/components/Header';
+import { LensSearchModal } from '@/components/LensSearchModal';
+import { VoiceSearchModal } from '@/components/VoiceSearchModal';
+import { SearchSuggestions } from '@/components/SearchSuggestions';
 
 export default function LandingPage() {
   const [query, setQuery] = useState('');
   const [activeModal, setActiveModal] = useState<'voice' | 'image' | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const searchBoxRef = useRef<HTMLFormElement>(null);
   const router = useRouter();
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim()) {
+      saveRecentSearch(query.trim());
       router.push(`/search?q=${encodeURIComponent(query)}`);
     }
   };
 
   const handleQuickSearch = (q: string) => {
+    saveRecentSearch(q);
     router.push(`/search?q=${encodeURIComponent(q)}`);
   };
+
+  const saveRecentSearch = (q: string) => {
+    if (typeof window !== 'undefined') {
+      try {
+        const localHistory = localStorage.getItem('sarath_recent_searches');
+        let historyArr: string[] = localHistory ? JSON.parse(localHistory) : [];
+        historyArr = [q, ...historyArr.filter(item => item.toLowerCase() !== q.toLowerCase())].slice(0, 10);
+        localStorage.setItem('sarath_recent_searches', JSON.stringify(historyArr));
+      } catch (e) {
+        // ignore
+      }
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev < 9 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : 9));
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setSelectedIndex(-1);
+    }
+  };
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <div className="min-h-screen relative overflow-hidden bg-background text-foreground bg-mesh-pattern flex flex-col font-sans">
@@ -61,13 +106,14 @@ export default function LandingPage() {
           </p>
         </motion.div>
 
-        {/* Modern Search Box */}
+        {/* Modern Search Box with Real-time Keyword Suggestions */}
         <motion.form
+          ref={searchBoxRef}
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.1 }}
           onSubmit={handleSearch}
-          className="w-full max-w-2xl relative group mb-8"
+          className="w-full max-w-2xl relative group mb-8 z-30"
         >
           <div className="absolute -inset-1 bg-gradient-to-r from-purple-500 via-indigo-500 to-cyan-400 rounded-[9999px] blur-xl opacity-35 group-hover:opacity-75 transition-opacity duration-500" />
           
@@ -77,7 +123,13 @@ export default function LandingPage() {
             <input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setShowSuggestions(true);
+                setSelectedIndex(-1);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onKeyDown={handleKeyDown}
               placeholder="Search anything..."
               className="flex-1 bg-transparent outline-none text-base text-white placeholder:text-zinc-500 font-medium"
             />
@@ -107,9 +159,22 @@ export default function LandingPage() {
               </button>
             </div>
           </div>
+
+          {/* Real-time Keyword Suggestions Dropdown */}
+          <SearchSuggestions
+            query={query}
+            isOpen={showSuggestions}
+            selectedIndex={selectedIndex}
+            onSelect={(suggestion) => {
+              setQuery(suggestion);
+              setShowSuggestions(false);
+              handleQuickSearch(suggestion);
+            }}
+            onClose={() => setShowSuggestions(false)}
+          />
         </motion.form>
 
-        {/* Popular / Trending Pills */}
+        {/* Popular / Trending Keyword Suggestions */}
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
@@ -149,73 +214,30 @@ export default function LandingPage() {
 
       </main>
 
-      {/* Voice / Image Modals */}
-      <AnimatePresence>
-        {activeModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4"
-            onClick={() => setActiveModal(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-zinc-900 border border-white/10 p-8 rounded-3xl max-w-md w-full text-center relative shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {activeModal === 'voice' ? (
-                <div>
-                  <div className="w-16 h-16 rounded-full bg-purple-500/20 text-purple-400 mx-auto flex items-center justify-center mb-4 animate-pulse">
-                    <Mic className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-xl font-bold text-white mb-2 font-outfit">Voice Search</h3>
-                  <p className="text-xs text-zinc-400 mb-6">Speak clearly to search with Sarath AI.</p>
-                  <button
-                    onClick={() => {
-                      setQuery('artificial intelligence research');
-                      setActiveModal(null);
-                    }}
-                    className="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold rounded-full hover:brightness-110 transition-all"
-                  >
-                    Sample Search Query
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <div className="w-16 h-16 rounded-full bg-cyan-500/20 text-cyan-400 mx-auto flex items-center justify-center mb-4">
-                    <ImageIcon className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-xl font-bold text-white mb-2 font-outfit">Visual Search</h3>
-                  <p className="text-xs text-zinc-400 mb-6">Drag & drop image or upload file to search.</p>
-                  <button
-                    onClick={() => {
-                      setQuery('visual data recognition');
-                      setActiveModal(null);
-                    }}
-                    className="px-6 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-xs font-semibold rounded-full hover:brightness-110 transition-all"
-                  >
-                    Select Demo Image
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Voice / Lens Modals */}
+      <VoiceSearchModal
+        isOpen={activeModal === 'voice'}
+        onClose={() => setActiveModal(null)}
+        onTranscript={(speechQuery) => {
+          setQuery(speechQuery);
+          setActiveModal(null);
+          handleQuickSearch(speechQuery);
+        }}
+      />
+
+      <LensSearchModal isOpen={activeModal === 'image'} onClose={() => setActiveModal(null)} />
 
       {/* Footer */}
       <footer className="w-full bg-glass border-t border-white/10 py-4 px-8 flex flex-col sm:flex-row justify-between items-center text-xs text-zinc-500 font-medium tracking-wide gap-2">
         <div className="flex gap-6">
-          <a href="#" className="hover:text-white transition-colors">Documentation</a>
-          <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
-          <a href="#" className="hover:text-white transition-colors">Search Terms</a>
+          <a href="/about" className="hover:text-white transition-colors">About</a>
+          <a href="/terms" className="hover:text-white transition-colors">Terms of Service</a>
+          <a href="/licenses" className="hover:text-white transition-colors">Licenses</a>
+          <a href="/help" className="hover:text-white transition-colors">Help Center</a>
         </div>
         <div className="flex items-center gap-3">
           <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-zinc-400 font-mono text-[10px]">
-            v2.0
+            v7.0 Global AI Search
           </span>
           <span>© 2026 Sarath Search Engine</span>
         </div>

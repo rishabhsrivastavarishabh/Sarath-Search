@@ -8,6 +8,10 @@ export async function GET(request: NextRequest) {
   const q = searchParams.get('q') || '';
   const category = searchParams.get('category') || 'all';
   const userId = searchParams.get('userId') || null;
+  const aiModel = searchParams.get('aiModel') || undefined;
+  const lang = searchParams.get('lang') || undefined;
+  const page = parseInt(searchParams.get('page') || '1', 10);
+  const pageSize = parseInt(searchParams.get('pageSize') || '10', 10);
 
   if (!q.trim()) {
     return NextResponse.json({
@@ -16,13 +20,15 @@ export async function GET(request: NextRequest) {
       ai_answer: null,
       total: 0,
       provider: 'Sarath Search',
+      page,
+      pageSize,
     });
   }
 
   const startTime = Date.now();
 
-  const searchData = await performDuckDuckGoSearch(q, category);
-  const aiAnswer = generateAiAnswer(q, searchData.results);
+  const searchData = await performDuckDuckGoSearch(q, category, page, pageSize);
+  const aiAnswer = await generateAiAnswer(q, searchData.results, aiModel, lang);
   const latencyMs = Date.now() - startTime;
 
   // Insert into search_analytics
@@ -39,18 +45,6 @@ export async function GET(request: NextRequest) {
     // Non-blocking analytics logging
   }
 
-  // Insert into search_history if userId provided or guest record
-  try {
-    await supabaseAdmin.from('search_history').insert({
-      query: q,
-      category,
-      user_id: userId || null,
-      searched_at: new Date().toISOString(),
-    });
-  } catch (err) {
-    // Non-blocking history logging
-  }
-
   return NextResponse.json({
     query: q,
     category,
@@ -58,6 +52,8 @@ export async function GET(request: NextRequest) {
     ai_answer: aiAnswer,
     total: searchData.total,
     provider: 'Sarath Search',
+    page,
+    pageSize,
     latency_ms: latencyMs,
   });
 }

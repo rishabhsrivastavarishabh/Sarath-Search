@@ -107,52 +107,12 @@ export function Header() {
         {/* Left Branding */}
         <div className="flex items-center gap-3">
           <Logo size="sm" showTagline={false} onClick={() => router.push('/')} />
-          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-            2.0
-          </span>
         </div>
 
-        {/* Center Navigation Links */}
-        <nav className="hidden md:flex items-center gap-8 text-xs font-semibold text-zinc-300">
-          <button
-            onClick={() => router.push('/')}
-            className="hover:text-white hover:scale-105 transition-all"
-          >
-            Home
-          </button>
-          <button
-            onClick={() => router.push('/search?q=technology')}
-            className="hover:text-white hover:scale-105 transition-all"
-          >
-            Search
-          </button>
-          <button
-            onClick={() => router.push('/open')}
-            className="hover:text-white hover:scale-105 transition-all flex items-center gap-1.5"
-          >
-            <Laptop className="w-3.5 h-3.5 text-purple-400" /> App Store
-          </button>
-        </nav>
+        {/* Clean Header */}
 
         {/* Right Action Icons & Auth */}
         <div className="flex items-center gap-3">
-          {/* Theme Toggle */}
-          <button
-            onClick={toggleTheme}
-            className="p-2 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
-            title="Toggle Theme"
-          >
-            {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-purple-400" />}
-          </button>
-
-          {/* Settings */}
-          <button
-            onClick={() => router.push('/settings')}
-            className="p-2 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
-            title="Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
 
           {/* Notifications */}
           <div className="relative">
