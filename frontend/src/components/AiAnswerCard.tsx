@@ -11,13 +11,7 @@ import {
   VolumeX,
   Languages,
   RotateCcw,
-  ExternalLink,
-  ChevronDown,
-  ChevronUp,
-  HelpCircle,
   TrendingUp,
-  CheckCircle2,
-  XCircle,
   Lightbulb,
   ArrowRight
 } from 'lucide-react';
@@ -57,7 +51,6 @@ export function AiAnswerCard({ data, onSelectQuery, onLanguageChange, onRegenera
   const [shared, setShared] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentLang, setCurrentLang] = useState(data.detected_language || 'English');
-  const [expandedFaqIdx, setExpandedFaqIdx] = useState<number | null>(0);
 
   useEffect(() => {
     return () => {
@@ -126,7 +119,7 @@ export function AiAnswerCard({ data, onSelectQuery, onLanguageChange, onRegenera
             <h2 className="text-base font-bold text-white font-outfit flex items-center gap-2">
               AI Overview
               <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 font-mono">
-                {data.ai_model || 'Sarath AI'}
+                Sarath AI
               </span>
             </h2>
           </div>
@@ -209,7 +202,7 @@ export function AiAnswerCard({ data, onSelectQuery, onLanguageChange, onRegenera
           </div>
         )}
 
-        {/* 3. Important Facts & Takeaways */}
+        {/* 3. Important Concepts */}
         {data.key_points && data.key_points.length > 0 && (
           <div className="space-y-2">
             <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -226,101 +219,7 @@ export function AiAnswerCard({ data, onSelectQuery, onLanguageChange, onRegenera
           </div>
         )}
 
-        {/* 4. Features & Advantages */}
-        {((data.features && data.features.length > 0) || (data.advantages && data.advantages.length > 0)) && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-            {data.features && data.features.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider">Key Capabilities</h4>
-                <div className="space-y-1.5">
-                  {data.features.map((feat, idx) => (
-                    <div key={idx} className="p-2.5 rounded-xl bg-white/5 border border-white/5 flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
-                      <span>{feat}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {data.advantages && data.advantages.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-[11px] font-bold text-green-300 uppercase tracking-wider">Advantages</h4>
-                <div className="space-y-1.5">
-                  {data.advantages.map((adv, idx) => (
-                    <div key={idx} className="p-2.5 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center gap-2 text-green-200">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
-                      <span>{adv}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 5. FAQ Accordion */}
-        {data.faq && data.faq.length > 0 && (
-          <div className="space-y-2 pt-2">
-            <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-              <HelpCircle className="w-3.5 h-3.5 text-purple-400" /> Frequently Asked Questions
-            </h3>
-            <div className="space-y-2">
-              {data.faq.map((faqItem, idx) => (
-                <div
-                  key={idx}
-                  className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden transition-all"
-                >
-                  <button
-                    onClick={() => setExpandedFaqIdx(expandedFaqIdx === idx ? null : idx)}
-                    className="w-full p-3 text-left font-bold text-white flex items-center justify-between gap-2 hover:bg-white/5 transition-colors"
-                  >
-                    <span>{faqItem.question}</span>
-                    {expandedFaqIdx === idx ? <ChevronUp className="w-4 h-4 text-purple-400" /> : <ChevronDown className="w-4 h-4 text-zinc-400" />}
-                  </button>
-                  {expandedFaqIdx === idx && (
-                    <div className="px-3 pb-3 pt-1 text-zinc-300 leading-relaxed border-t border-white/5">
-                      {faqItem.answer}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 6. Sources Panel at Bottom */}
-        {data.sources && data.sources.length > 0 && (
-          <div className="pt-4 border-t border-white/10 space-y-3">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Sources ({data.sources.length})</span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              {data.sources.map((src, idx) => (
-                <a
-                  key={idx}
-                  href={src.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-400/40 transition-all flex items-start gap-2.5 group"
-                >
-                  <img
-                    src={`https://www.google.com/s2/favicons?domain=${src.domain}&sz=64`}
-                    alt=""
-                    className="w-4 h-4 rounded-full mt-0.5 flex-shrink-0"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <h5 className="font-bold text-white truncate text-xs group-hover:text-purple-300 transition-colors">
-                      {src.title}
-                    </h5>
-                    <p className="text-[10px] text-zinc-400 truncate font-mono">{src.domain}</p>
-                  </div>
-                  <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover:text-purple-400 transition-colors flex-shrink-0 mt-0.5" />
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 7. 5–10 Relevant Follow-Up Questions */}
+        {/* 4. 5–10 Relevant Follow-Up Questions */}
         {data.related_questions && data.related_questions.length > 0 && (
           <div className="pt-4 border-t border-white/10 space-y-2">
             <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">

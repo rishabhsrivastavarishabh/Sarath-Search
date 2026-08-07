@@ -6,6 +6,7 @@ import { Globe, ExternalLink, ShieldCheck, Sparkles, Building2, Calendar, Award 
 
 interface KnowledgeCardProps {
   query: string;
+  hasResults?: boolean;
 }
 
 const KNOWLEDGE_ENTITIES: Record<string, { title: string; subtitle: string; description: string; domain: string; url: string; attributes: { label: string; value: string }[] }> = {
@@ -73,11 +74,11 @@ const KNOWLEDGE_ENTITIES: Record<string, { title: string; subtitle: string; desc
   },
 };
 
-export function KnowledgeCard({ query }: KnowledgeCardProps) {
+export function KnowledgeCard({ query, hasResults = true }: KnowledgeCardProps) {
   const cleanQ = query.toLowerCase().trim();
   const entityKey = Object.keys(KNOWLEDGE_ENTITIES).find((k) => cleanQ.includes(k));
 
-  if (!entityKey) return null;
+  if (!hasResults || !entityKey) return null;
   const entity = KNOWLEDGE_ENTITIES[entityKey];
 
   return (

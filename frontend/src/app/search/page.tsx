@@ -22,7 +22,12 @@ import {
   Zap,
   HelpCircle,
   ChevronRight,
-  Bot
+  AlertTriangle,
+  WifiOff,
+  ServerCrash,
+  RefreshCw,
+  History,
+  Info
 } from 'lucide-react';
 
 import { Header } from '@/components/Header';
@@ -33,10 +38,18 @@ import { KnowledgeCard } from '@/components/KnowledgeCard';
 import { LensSearchModal } from '@/components/LensSearchModal';
 import { VoiceSearchModal } from '@/components/VoiceSearchModal';
 import { SearchSuggestions } from '@/components/SearchSuggestions';
-import { SearchResultItem } from '@/lib/search-provider';
-import { AiAnswerData } from '@/lib/ai-answer';
+import { SearchResultItem, AiAnswerData } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
+
+export type SearchStatusState =
+  | 'idle'
+  | 'loading'
+  | 'success'
+  | 'no_results'
+  | 'provider_unavailable'
+  | 'network_error'
+  | 'server_error';
 
 function SearchResultsContent() {
   const searchParams = useSearchParams();
@@ -49,25 +62,31 @@ function SearchResultsContent() {
   const [category, setCategory] = useState(categoryParam);
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [aiAnswer, setAiAnswer] = useState<AiAnswerData | null>(null);
+  const [searchProvider, setSearchProvider] = useState<string>('Sarath Search');
   const [loading, setLoading] = useState(true);
-  const [showFilters, setShowFilters] = useState(false);
-  const [lensOpen, setLensOpen] = useState(false);
-  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [searchStatus, setSearchStatus] = useState<SearchStatusState>('loading');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Spell Correction State
+  const [spellInfo, setSpellInfo] = useState<{ isCorrected: boolean; correctedQuery: string | null; originalQuery: string }>({
+    isCorrected: false,
+    correctedQuery: null,
+    originalQuery: '',
+  });
+
+  // Settings & Toggles
   const [aiMode, setAiMode] = useState(true);
   const [targetLang, setTargetLang] = useState('auto');
+  const [showFilters, setShowFilters] = useState(false);
 
-  // Autocomplete state
+  // Modals & Suggestions State
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [lensOpen, setLensOpen] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionIdx, setSuggestionIdx] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Filters State
-  const [country, setCountry] = useState('all');
-  const [language, setLanguage] = useState('all');
-  const [timeFilter, setTimeFilter] = useState('anytime');
-  const [safeSearch, setSafeSearch] = useState(true);
-
-  // User Actions Feedback
+  // Copy & Bookmark Feedback
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [bookmarkedUrls, setBookmarkedUrls] = useState<Set<string>>(new Set());
 
@@ -80,28 +99,73 @@ function SearchResultsContent() {
     setQuery(queryParam);
     setCategory(categoryParam);
 
-    if (!queryParam.trim()) return;
+    if (!queryParam.trim()) {
+      setSearchStatus('idle');
+      setLoading(false);
+      return;
+    }
 
     fetchSearchResults();
   }, [queryParam, categoryParam, targetLang, page, pageSize]);
 
   async function fetchSearchResults() {
     setLoading(true);
+    setSearchStatus('loading');
+    setErrorMessage(null);
+
     const selectedModel = typeof window !== 'undefined' ? localStorage.getItem('sarath_ai_model') || '' : '';
 
     try {
       recordSearchHistory({ query: queryParam, search_type: categoryParam, ai_mode: aiMode });
+
       const res = await fetch(
         `/api/search?q=${encodeURIComponent(queryParam)}&category=${encodeURIComponent(categoryParam)}&aiModel=${encodeURIComponent(selectedModel)}&lang=${encodeURIComponent(targetLang)}&page=${page}&pageSize=${pageSize}`
       );
-      if (res.ok) {
-        const data = await res.json();
-        setResults(data.results || []);
-        setAiAnswer(data.ai_answer || null);
-        setTotalResults(data.total || (data.results ? data.results.length : 0));
+
+      if (!res.ok) {
+        if (res.status >= 500) {
+          setSearchStatus('server_error');
+          setErrorMessage('Something went wrong on our side. Please try again.');
+        } else {
+          setSearchStatus('provider_unavailable');
+          setErrorMessage("We couldn't retrieve live search results right now. Please try again in a few moments.");
+        }
+        setResults([]);
+        setAiAnswer(null);
+        return;
       }
-    } catch (err) {
-      console.warn('Search fetch error', err);
+
+      const data = await res.json();
+      const fetchedResults: SearchResultItem[] = data.results || [];
+      setSearchProvider(data.provider || 'Sarath Search');
+      setSpellInfo({
+        isCorrected: data.is_corrected || false,
+        correctedQuery: data.corrected_query || null,
+        originalQuery: data.original_query || queryParam,
+      });
+
+      if (fetchedResults.length > 0) {
+        setResults(fetchedResults);
+        setAiAnswer(data.ai_answer || null);
+        setTotalResults(data.total || fetchedResults.length);
+        setSearchStatus('success');
+      } else {
+        setResults([]);
+        setAiAnswer(null);
+        setTotalResults(0);
+        setSearchStatus('no_results');
+      }
+    } catch (err: any) {
+      console.warn('Search network or fetch exception:', err);
+      if (typeof window !== 'undefined' && !navigator.onLine) {
+        setSearchStatus('network_error');
+        setErrorMessage("You're currently offline or your network connection is unavailable.");
+      } else {
+        setSearchStatus('provider_unavailable');
+        setErrorMessage("We couldn't retrieve live search results right now. Please try again in a few moments.");
+      }
+      setResults([]);
+      setAiAnswer(null);
     } finally {
       setLoading(false);
     }
@@ -168,7 +232,14 @@ function SearchResultsContent() {
       <Header />
 
       <div className="flex flex-1 max-w-7xl mx-auto w-full px-4 md:px-6 py-6 gap-8">
-        <Sidebar currentCategory={category} />
+        <Sidebar
+          currentCategory={category}
+          onSelectCategory={(cat) => {
+            setCategory(cat);
+            setPage(1);
+            router.push(`/search?q=${encodeURIComponent(queryParam)}&category=${cat}`);
+          }}
+        />
 
         <main className="flex-1 max-w-5xl w-full space-y-6">
           {/* Premium Sticky Top Search Bar */}
@@ -201,16 +272,14 @@ function SearchResultsContent() {
                       <X className="w-4 h-4" />
                     </button>
                   )}
-                  {/* Voice Search Button */}
                   <button
                     type="button"
                     onClick={() => setVoiceOpen(true)}
                     className="p-2 text-zinc-400 hover:text-white rounded-full hover:bg-white/10 transition-colors"
-                    title="Voice Search (Speech-to-Text)"
+                    title="Voice Search"
                   >
                     <Mic className="w-4 h-4 text-cyan-400" />
                   </button>
-                  {/* Lens Search Button */}
                   <button
                     type="button"
                     onClick={() => setLensOpen(true)}
@@ -219,7 +288,6 @@ function SearchResultsContent() {
                   >
                     <Camera className="w-4 h-4 text-purple-400" />
                   </button>
-                  {/* Filter Toggle */}
                   <button
                     type="button"
                     onClick={() => setShowFilters(!showFilters)}
@@ -234,7 +302,6 @@ function SearchResultsContent() {
                 </div>
               </div>
 
-              {/* AI Mode Toggle Button */}
               <button
                 type="button"
                 onClick={() => setAiMode(!aiMode)}
@@ -249,7 +316,6 @@ function SearchResultsContent() {
                 <span>AI Mode: {aiMode ? 'ON' : 'OFF'}</span>
               </button>
 
-              {/* Main Submit Button */}
               <button
                 type="submit"
                 className="px-5 py-3.5 bg-purple-600 hover:bg-purple-500 text-white rounded-full text-xs font-bold transition-all shadow-md flex items-center justify-center"
@@ -257,7 +323,6 @@ function SearchResultsContent() {
                 Search
               </button>
 
-              {/* Real-time Search Suggestions Dropdown */}
               <SearchSuggestions
                 query={query}
                 isOpen={suggestionsOpen}
@@ -269,120 +334,65 @@ function SearchResultsContent() {
                 onClose={() => setSuggestionsOpen(false)}
               />
             </form>
-
-            {/* Expanded Search Filters Bar */}
-            <AnimatePresence>
-              {showFilters && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="pt-3 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs"
-                >
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Country</label>
-                    <select
-                      value={country}
-                      onChange={(e) => setCountry(e.target.value)}
-                      className="w-full bg-zinc-950 border border-white/15 rounded-xl px-3 py-1.5 text-white outline-none"
-                    >
-                      <option value="all">All Countries</option>
-                      <option value="us">United States</option>
-                      <option value="uk">United Kingdom</option>
-                      <option value="in">India</option>
-                      <option value="de">Germany</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Language</label>
-                    <select
-                      value={language}
-                      onChange={(e) => setLanguage(e.target.value)}
-                      className="w-full bg-zinc-950 border border-white/15 rounded-xl px-3 py-1.5 text-white outline-none"
-                    >
-                      <option value="all">All Languages</option>
-                      <option value="en">English</option>
-                      <option value="hi">हिंदी (Hindi)</option>
-                      <option value="es">Spanish</option>
-                      <option value="fr">French</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Time Filter</label>
-                    <select
-                      value={timeFilter}
-                      onChange={(e) => setTimeFilter(e.target.value)}
-                      className="w-full bg-zinc-950 border border-white/15 rounded-xl px-3 py-1.5 text-white outline-none"
-                    >
-                      <option value="anytime">Anytime</option>
-                      <option value="24h">Past 24 Hours</option>
-                      <option value="week">Past Week</option>
-                      <option value="month">Past Month</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Results Per Page</label>
-                    <select
-                      value={pageSize}
-                      onChange={(e) => {
-                        setPageSize(Number(e.target.value));
-                        setPage(1);
-                      }}
-                      className="w-full bg-zinc-950 border border-white/15 rounded-xl px-3 py-1.5 text-white outline-none"
-                    >
-                      <option value={10}>10 per page</option>
-                      <option value={20}>20 per page</option>
-                      <option value={50}>50 per page</option>
-                      <option value={100}>100 per page</option>
-                    </select>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
 
-          {/* Search Content Columns */}
+          {/* Main Results & Status Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Center Main Results Column */}
             <div className="lg:col-span-2 space-y-6">
-              {/* If AI Mode is ON -> AI Overview renders FIRST */}
-              {aiMode && aiAnswer && (
-                <AiAnswerCard
-                  data={aiAnswer}
-                  onSelectQuery={(q) => router.push(`/search?q=${encodeURIComponent(q)}`)}
-                  onLanguageChange={(lang) => setTargetLang(lang)}
-                  onRegenerate={() => fetchSearchResults()}
-                />
-              )}
-
-              {/* Skeleton Loading State */}
+              {/* Skeleton Loader */}
               {loading && (
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="p-6 rounded-3xl bg-glass-card border border-white/10 space-y-3 animate-pulse">
-                      <div className="flex items-center gap-3">
-                        <div className="w-5 h-5 rounded-full bg-white/10" />
-                        <div className="h-4 bg-white/10 rounded w-1/3" />
-                      </div>
-                      <div className="h-6 bg-white/10 rounded w-3/4" />
-                      <div className="h-4 bg-white/10 rounded w-full" />
-                    </div>
-                  ))}
+                <div className="space-y-4 animate-pulse">
+                  <div className="h-44 rounded-3xl bg-white/5 border border-white/10" />
+                  <div className="h-32 rounded-3xl bg-white/5 border border-white/10" />
+                  <div className="h-32 rounded-3xl bg-white/5 border border-white/10" />
                 </div>
               )}
 
-              {/* Search Result Cards */}
-              {!loading && results.length > 0 && (
+              {/* STATE 1 - SUCCESS */}
+              {!loading && searchStatus === 'success' && results.length > 0 && (
                 <div className="space-y-4">
+                  {/* Spell Correction Notice Banner */}
+                  {spellInfo.isCorrected && (
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-900/40 to-cyan-900/40 border border-purple-500/40 text-xs text-purple-200 flex items-center justify-between shadow-lg">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-300 shrink-0 animate-pulse" />
+                        <span>
+                          Showing results for <strong className="text-white font-bold font-outfit text-sm">{spellInfo.correctedQuery}</strong>.
+                          Search instead for{' '}
+                          <button
+                            type="button"
+                            onClick={() => handleSearchSubmit(undefined, spellInfo.originalQuery)}
+                            className="text-cyan-400 hover:underline font-mono underline-offset-2"
+                          >
+                            {spellInfo.originalQuery}
+                          </button>
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cached Results Notice Badge */}
+                  {searchProvider.includes('Cache') && (
+                    <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs flex items-center gap-2 font-medium">
+                      <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+                      <span>Showing cached results while live search is temporarily unavailable.</span>
+                    </div>
+                  )}
+
+                  {/* AI Overview Component (Renders First if AI Mode is ON) */}
+                  {aiMode && aiAnswer && (
+                    <AiAnswerCard
+                      data={aiAnswer}
+                      onSelectQuery={(q) => router.push(`/search?q=${encodeURIComponent(q)}`)}
+                      onLanguageChange={(lang) => setTargetLang(lang)}
+                      onRegenerate={() => fetchSearchResults()}
+                    />
+                  )}
+
                   <div className="flex items-center justify-between text-xs text-zinc-400 font-mono px-2 py-1">
-                    <span>
-                      About {(Math.abs(queryParam.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) * 1482019) + 1480000).toLocaleString()} results ({(0.14 + (queryParam.length % 5) * 0.02).toFixed(2)} seconds)
-                    </span>
+                    <span>{results.length} search results</span>
                     <span className="text-[10px] text-purple-400 font-bold uppercase tracking-wider bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
-                      Sarath Global Index
+                      {searchProvider}
                     </span>
                   </div>
 
@@ -392,9 +402,8 @@ function SearchResultsContent() {
                       initial={{ opacity: 0, y: 15 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3, delay: idx * 0.05 }}
-                      className="p-6 rounded-3xl bg-glass-card hover:bg-glass border border-white/10 hover:border-purple-400/40 shadow-xl transition-all group space-y-3 relative"
+                      className="p-6 rounded-3xl bg-glass-card hover:bg-glass border border-white/10 hover:border-purple-400/40 shadow-xl transition-all group space-y-3 relative overflow-hidden"
                     >
-                      {/* Favicon & Breadcrumb Header */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2.5">
                           <img
@@ -413,27 +422,39 @@ function SearchResultsContent() {
 
                         {item.verified_domain === true && (
                           <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[9px] font-bold flex items-center gap-1">
-                            <ShieldCheck className="w-3 h-3 text-purple-400" /> Verified
+                            <ShieldCheck className="w-3 h-3 text-purple-400" /> Verified Domain
                           </span>
                         )}
                       </div>
 
-                      {/* Title Link */}
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block text-lg font-bold text-white hover:text-purple-300 font-outfit transition-colors leading-snug"
-                      >
-                        {item.title}
-                      </a>
+                      <div className="flex flex-col md:flex-row gap-4 justify-between items-start">
+                        <div className="space-y-2 flex-1">
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block text-lg font-bold text-white hover:text-purple-300 font-outfit transition-colors leading-snug"
+                          >
+                            {item.title}
+                          </a>
 
-                      {/* Meta Description */}
-                      <p className="text-xs text-zinc-300 leading-relaxed">
-                        {item.meta_description}
-                      </p>
+                          <p className="text-xs text-zinc-300 leading-relaxed">
+                            {item.meta_description}
+                          </p>
+                        </div>
 
-                      {/* Result Footer Actions */}
+                        {item.og_image && (
+                          <a href={item.url} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-2xl overflow-hidden border border-white/10 w-full md:w-36 h-24 bg-black/40 hover:opacity-90 transition-opacity">
+                            <img
+                              src={item.og_image}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                            />
+                          </a>
+                        )}
+                      </div>
+
                       <div className="flex items-center justify-between border-t border-white/5 pt-3 text-xs text-zinc-400">
                         <div className="flex items-center gap-3">
                           <a
@@ -463,10 +484,28 @@ function SearchResultsContent() {
                             <Bookmark className="w-3.5 h-3.5" />
                             <span>{bookmarkedUrls.has(item.url) ? 'Saved' : 'Save'}</span>
                           </button>
+
+                          <button
+                            onClick={() => {
+                              if (navigator.share) {
+                                navigator.share({ title: item.title, url: item.url }).catch(() => {});
+                              } else {
+                                handleCopyLink(item.url);
+                              }
+                            }}
+                            className="hover:text-white transition-colors flex items-center gap-1 text-[11px]"
+                            title="Share Link"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                            <span>Share</span>
+                          </button>
                         </div>
 
-                        <div className="flex items-center gap-2 text-[10px] text-zinc-500">
-                          <span>{item.reading_time_min ? `${item.reading_time_min} min read` : '2 min read'}</span>
+                        <div className="flex items-center gap-2 text-[10px] text-zinc-400">
+                          <span className="flex items-center gap-1 font-mono">
+                            <Clock className="w-3 h-3 text-zinc-500" />
+                            {item.reading_time_min ? `${item.reading_time_min} min read` : '2 min read'}
+                          </span>
                           {item.published_date && (
                             <>
                               <span>•</span>
@@ -478,7 +517,6 @@ function SearchResultsContent() {
                     </motion.div>
                   ))}
 
-                  {/* Pagination Navigation Controls */}
                   <div className="flex items-center justify-between pt-6 border-t border-white/10 text-xs">
                     <button
                       disabled={page <= 1}
@@ -487,9 +525,7 @@ function SearchResultsContent() {
                     >
                       ← Previous Page
                     </button>
-                    <span className="font-mono text-zinc-400 font-bold">
-                      Page {page}
-                    </span>
+                    <span className="font-mono text-zinc-400 font-bold">Page {page}</span>
                     <button
                       disabled={results.length < pageSize}
                       onClick={() => setPage(page + 1)}
@@ -501,54 +537,111 @@ function SearchResultsContent() {
                 </div>
               )}
 
-              {/* If AI Mode is OFF -> AI Overview renders AFTER search results */}
-              {!aiMode && aiAnswer && (
-                <AiAnswerCard
-                  data={aiAnswer}
-                  onSelectQuery={(q) => router.push(`/search?q=${encodeURIComponent(q)}`)}
-                  onLanguageChange={(lang) => setTargetLang(lang)}
-                  onRegenerate={() => fetchSearchResults()}
-                />
+              {/* STATE 2 - NO MATCHING RESULTS */}
+              {!loading && searchStatus === 'no_results' && (
+                <div className="p-10 rounded-3xl bg-glass-card border border-white/10 text-center space-y-4">
+                  <Search className="w-12 h-12 text-zinc-500 mx-auto" />
+                  <h3 className="text-xl font-bold text-white font-outfit">No matching results found.</h3>
+                  <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-xs text-zinc-300 max-w-md mx-auto text-left space-y-2">
+                    <p className="font-bold text-purple-300">Suggestions:</p>
+                    <ul className="list-disc list-inside space-y-1 text-zinc-400">
+                      <li>Check your spelling for typos</li>
+                      <li>Try different or broader search keywords</li>
+                      <li>Try searching without specific filters</li>
+                    </ul>
+                  </div>
+                </div>
               )}
 
-              {/* No Results Found */}
-              {!loading && results.length === 0 && (
-                <div className="p-12 rounded-3xl bg-glass-card border border-white/10 text-center space-y-3">
-                  <Search className="w-10 h-10 text-zinc-500 mx-auto" />
-                  <h3 className="text-lg font-bold text-white font-outfit">No reliable search results found</h3>
-                  <p className="text-xs text-zinc-400 max-w-sm mx-auto">
-                    Try checking your spelling or searching for a broader term.
-                  </p>
+              {/* STATE 3 - LIVE SEARCH UNAVAILABLE */}
+              {!loading && searchStatus === 'provider_unavailable' && (
+                <div className="p-10 rounded-3xl bg-glass-card border border-amber-500/30 text-center space-y-4">
+                  <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto" />
+                  <h3 className="text-lg font-bold text-white font-outfit">We couldn't retrieve live search results right now.</h3>
+                  <p className="text-xs text-zinc-400 max-w-md mx-auto">Please try again in a few moments.</p>
+                  <div className="flex justify-center gap-3 pt-2">
+                    <button
+                      onClick={() => fetchSearchResults()}
+                      className="px-5 py-2.5 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-lg flex items-center gap-2"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Retry Search
+                    </button>
+                    <button
+                      onClick={() => router.push('/history')}
+                      className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all flex items-center gap-2 border border-white/10"
+                    >
+                      <History className="w-3.5 h-3.5 text-cyan-400" /> View Recent Searches
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STATE 4 - NETWORK ERROR */}
+              {!loading && searchStatus === 'network_error' && (
+                <div className="p-10 rounded-3xl bg-glass-card border border-rose-500/30 text-center space-y-4">
+                  <WifiOff className="w-12 h-12 text-rose-400 mx-auto" />
+                  <h3 className="text-lg font-bold text-white font-outfit">You're currently offline or your network connection is unavailable.</h3>
+                  <button
+                    onClick={() => fetchSearchResults()}
+                    className="px-6 py-2.5 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg inline-flex items-center gap-2"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Retry Search
+                  </button>
+                </div>
+              )}
+
+              {/* STATE 5 - INTERNAL SERVER ERROR */}
+              {!loading && searchStatus === 'server_error' && (
+                <div className="p-10 rounded-3xl bg-glass-card border border-rose-500/30 text-center space-y-4">
+                  <ServerCrash className="w-12 h-12 text-rose-400 mx-auto" />
+                  <h3 className="text-lg font-bold text-white font-outfit">Something went wrong on our side.</h3>
+                  <div className="flex justify-center gap-3 pt-2">
+                    <button
+                      onClick={() => fetchSearchResults()}
+                      className="px-5 py-2.5 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-lg flex items-center gap-2"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Retry Search
+                    </button>
+                    <button
+                      onClick={() => router.push('/contact')}
+                      className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all border border-white/10"
+                    >
+                      Report Issue
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Right Side Column */}
-            <div className="space-y-6">
-              <KnowledgeCard query={queryParam} />
+            {/* Right Side Knowledge Column (Renders ONLY WHEN search results exist) */}
+            {!loading && searchStatus === 'success' && results.length > 0 && (
+              <div className="space-y-6">
+                <KnowledgeCard query={queryParam} hasResults={results.length > 0} />
 
-              <div className="p-6 rounded-3xl bg-glass-card border border-white/10 shadow-xl space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-purple-400" /> Trending Topics
-                </h4>
-                <div className="space-y-2 text-xs">
-                  {['AI Code Generators', 'Next.js 15 Server Actions', 'Supabase Vector Search', 'Quantum Computing'].map((topic, i) => (
-                    <button
-                      key={i}
-                      onClick={() => router.push(`/search?q=${encodeURIComponent(topic)}`)}
-                      className="w-full text-left p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white transition-all flex items-center justify-between group"
-                    >
-                      <span>{topic}</span>
-                      <ChevronRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-purple-400" />
-                    </button>
-                  ))}
+                <div className="p-6 rounded-3xl bg-glass-card border border-white/10 shadow-xl space-y-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-purple-400" /> Trending Topics
+                  </h4>
+                  <div className="space-y-2 text-xs">
+                    {['AI Code Generators', 'Next.js 15 Server Actions', 'Supabase Vector Search', 'Quantum Computing'].map((topic, i) => (
+                      <button
+                        key={i}
+                        onClick={() => router.push(`/search?q=${encodeURIComponent(topic)}`)}
+                        className="w-full text-left p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white transition-all flex items-center justify-between group"
+                      >
+                        <span>{topic}</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-purple-400" />
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </main>
       </div>
 
+      <LensSearchModal isOpen={lensOpen} onClose={() => setLensOpen(false)} />
       <VoiceSearchModal
         isOpen={voiceOpen}
         onClose={() => setVoiceOpen(false)}
@@ -557,14 +650,17 @@ function SearchResultsContent() {
           handleSearchSubmit(undefined, text);
         }}
       />
-      <LensSearchModal isOpen={lensOpen} onClose={() => setLensOpen(false)} />
     </div>
   );
 }
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background text-white p-8 animate-pulse">Loading Sarath Search...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-purple-500 border-t-transparent animate-spin" />
+      </div>
+    }>
       <SearchResultsContent />
     </Suspense>
   );

@@ -1,30 +1,5 @@
-import { SearchResultItem } from './search-provider';
-
-export interface AiAnswerFaqItem {
-  question: string;
-  answer: string;
-}
-
-export interface AiAnswerData {
-  query: string;
-  overview: string;
-  introduction?: string;
-  detailed_explanation: string;
-  quick_facts: string[];
-  key_points: string[];
-  features?: string[];
-  advantages?: string[];
-  disadvantages?: string[];
-  code_examples?: string[];
-  faq?: AiAnswerFaqItem[];
-  related_topics?: string[];
-  people_also_search_for?: string[];
-  sources: { title: string; domain: string; url: string; index?: number }[];
-  related_questions: string[];
-  generated_at: string;
-  ai_model?: string;
-  detected_language?: string;
-}
+import { SearchResultItem, AiAnswerData, AiAnswerSource, AiAnswerFaqItem } from '@/types';
+export type { AiAnswerData, AiAnswerSource, AiAnswerFaqItem };
 
 const OPENROUTER_API_KEY =
   process.env.OPENROUTER_API_KEY ||
@@ -142,7 +117,7 @@ Return ONLY valid JSON matching this schema:
                   `What are the main alternatives to ${cleanQuery}?`
                 ],
             generated_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            ai_model: `OpenRouter (${targetModel.split('/')[1] || targetModel})`,
+            ai_model: 'Sarath AI',
             detected_language: detectedLang,
           };
         }

@@ -1,5 +1,5 @@
 import { supabaseAdmin } from './supabase';
-import { SearchResultItem } from './search-provider';
+import { SearchResultItem } from '@/types';
 
 export interface IndexedSearchOptions {
   query: string;
@@ -8,9 +8,31 @@ export interface IndexedSearchOptions {
   offset?: number;
 }
 
+const STOP_WORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'is', 'if', 'then', 'else', 'when',
+  'at', 'from', 'by', 'for', 'with', 'about', 'against', 'between', 'into',
+  'through', 'during', 'before', 'after', 'above', 'below', 'to', 'of', 'up',
+  'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then',
+  'once', 'here', 'there', 'where', 'why', 'how', 'all', 'any', 'both', 'each',
+  'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only',
+  'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can', 'will', 'just',
+  'don', 'should', 'now'
+]);
+
 /**
- * BM25 Relevance Calculator
- * Computes BM25 score based on term frequency, document length, and field weights.
+ * Tokenizes text into stemmed normalized terms removing stop words
+ */
+export function tokenizeAndStem(text: string): string[] {
+  if (!text) return [];
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/gi, ' ')
+    .split(/\s+/)
+    .filter((term) => term.length > 1 && !STOP_WORDS.has(term));
+}
+
+/**
+ * Native BM25 Relevance Scoring Engine
  */
 export function calculateBM25Score(
   query: string,
@@ -18,33 +40,34 @@ export function calculateBM25Score(
   description: string,
   keywords = ''
 ): number {
-  const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
-  if (terms.length === 0) return 0.5;
+  const queryTerms = tokenizeAndStem(query);
+  if (queryTerms.length === 0) return 0.5;
 
-  const docText = `${title} ${title} ${description} ${keywords}`.toLowerCase();
-  const docLength = docText.split(/\s+/).length;
-  const avgDocLength = 150;
+  const docText = `${title} ${title} ${title} ${description} ${keywords}`;
+  const docTokens = tokenizeAndStem(docText);
+  const docLength = docTokens.length || 1;
+  const avgDocLength = 120;
 
   const k1 = 1.2;
   const b = 0.75;
 
-  let score = 0;
+  let bm25Score = 0;
 
-  terms.forEach(term => {
-    const tf = (docText.match(new RegExp(term, 'gi')) || []).length;
+  queryTerms.forEach((term) => {
+    const tf = docTokens.filter((t) => t === term || t.includes(term)).length;
     if (tf > 0) {
-      const idf = Math.log(1 + 100 / (tf + 1));
+      const idf = Math.log(1 + (500 - tf + 0.5) / (tf + 0.5));
       const numerator = tf * (k1 + 1);
       const denominator = tf + k1 * (1 - b + b * (docLength / avgDocLength));
-      score += idf * (numerator / denominator);
+      bm25Score += Math.max(0.1, idf) * (numerator / denominator);
     }
   });
 
-  return Number(Math.min(0.99, score / 10).toFixed(4));
+  return Number(Math.min(0.99, bm25Score / 10).toFixed(4));
 }
 
 /**
- * Searches Supabase indexed_pages using BM25 relevance & Full-Text Search
+ * Searches Supabase native indexed_pages PostgreSQL inverted index using BM25 relevance
  */
 export async function searchLocalIndex(options: IndexedSearchOptions): Promise<SearchResultItem[]> {
   const cleanQ = options.query.trim();
@@ -63,8 +86,8 @@ export async function searchLocalIndex(options: IndexedSearchOptions): Promise<S
     }
 
     return dbPages.map((page) => {
-      const bm25 = calculateBM25Score(cleanQ, page.title, page.meta_description || '', page.meta_keywords || '');
-      const finalScore = Number(Math.min(0.99, (page.search_score || 0.8) * 0.5 + bm25 * 0.5).toFixed(2));
+      const bm25 = calculateBM25Score(cleanQ, page.title || '', page.meta_description || '', page.meta_keywords || '');
+      const finalScore = Number(Math.min(0.99, (page.search_score || 0.8) * 0.4 + bm25 * 0.6).toFixed(2));
 
       return {
         id: page.id,
@@ -73,7 +96,7 @@ export async function searchLocalIndex(options: IndexedSearchOptions): Promise<S
         domain: page.domain || extractDomain(page.url),
         meta_description: page.meta_description || `Canonical search result for ${cleanQ}.`,
         favicon_url: page.favicon_url || `https://www.google.com/s2/favicons?domain=${page.domain || extractDomain(page.url)}&sz=64`,
-        reading_time_min: 2,
+        reading_time_min: Math.max(1, Math.ceil(((page.title || '').length + (page.meta_description || '').length) / 90)),
         published_date: page.indexed_time ? new Date(page.indexed_time).toLocaleDateString() : 'Indexed',
         category: 'all',
         score: finalScore,

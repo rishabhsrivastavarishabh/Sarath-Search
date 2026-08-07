@@ -28,7 +28,9 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now();
 
   const searchData = await performDuckDuckGoSearch(q, category, page, pageSize);
-  const aiAnswer = await generateAiAnswer(q, searchData.results, aiModel, lang);
+  const aiAnswer = searchData.results && searchData.results.length > 0
+    ? await generateAiAnswer(q, searchData.results, aiModel, lang)
+    : null;
   const latencyMs = Date.now() - startTime;
 
   // Insert into search_analytics
@@ -46,12 +48,16 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    query: q,
+    query: searchData.query || q,
+    original_query: searchData.original_query || q,
+    corrected_query: searchData.corrected_query || null,
+    is_corrected: searchData.is_corrected || false,
+    did_you_mean: searchData.did_you_mean || null,
     category,
     results: searchData.results,
     ai_answer: aiAnswer,
     total: searchData.total,
-    provider: 'Sarath Search',
+    provider: searchData.provider || 'Sarath Search',
     page,
     pageSize,
     latency_ms: latencyMs,

@@ -79,8 +79,12 @@ export function Sidebar({ currentCategory = 'all', onSelectCategory }: SidebarPr
           <button
             key={item.label}
             onClick={() => {
-              if (item.category && onSelectCategory) {
-                onSelectCategory(item.category);
+              if (item.category) {
+                if (onSelectCategory) {
+                  onSelectCategory(item.category);
+                } else {
+                  router.push(`/search?category=${item.category}`);
+                }
               } else if (item.path) {
                 router.push(item.path);
               }
@@ -140,11 +144,16 @@ export function Sidebar({ currentCategory = 'all', onSelectCategory }: SidebarPr
           </button>
 
           <button
-            onClick={() => router.push('/admin/console')}
-            className="flex items-center gap-3 px-4 py-2 rounded-2xl text-xs font-semibold text-zinc-400 hover:bg-white/10 hover:text-green-300 transition-all w-full text-left"
+            onClick={() => router.push('/admin/debug')}
+            className={cn(
+              'flex items-center gap-3 px-4 py-2 rounded-2xl text-xs font-semibold transition-all w-full text-left',
+              pathname === '/admin/debug'
+                ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40 font-bold'
+                : 'text-zinc-400 hover:bg-white/10 hover:text-purple-300'
+            )}
           >
-            <BarChart3 className="w-4 h-4 text-green-400" />
-            <span>Analytics</span>
+            <BarChart3 className="w-4 h-4 text-purple-400" />
+            <span>Debug Console</span>
           </button>
         </div>
       )}

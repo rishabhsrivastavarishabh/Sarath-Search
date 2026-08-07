@@ -1,85 +1,76 @@
-import { supabaseAdmin } from './supabase';
-import { crawlWebsiteUrl } from './crawler';
+import { SearchResultItem } from '@/types';
+import { fetchGoogleCustomSearchResults } from './google-search';
 import { searchLocalIndex } from './search-index';
-
-export interface SearchResultItem {
-  id: string;
-  title: string;
-  url: string;
-  domain: string;
-  meta_description: string;
-  favicon_url: string;
-  reading_time_min: number;
-  published_date: string;
-  category: 'all' | 'images' | 'videos' | 'news' | 'docs' | 'maps' | 'shopping';
-  score: number;
-  verified_domain?: boolean;
-}
+import { crawlWebsiteUrl } from './crawler';
+import { supabaseAdmin } from './supabase';
+import { correctQuerySpelling, SpellCorrectionResult } from './spell-corrector';
 
 export interface SearchProviderResponse {
   query: string;
+  original_query: string;
+  corrected_query: string | null;
+  is_corrected: boolean;
+  did_you_mean: string | null;
   results: SearchResultItem[];
   total: number;
-  provider: 'Sarath Search';
-  page?: number;
-  pageSize?: number;
+  provider: string;
+  page: number;
+  pageSize: number;
 }
 
-const SEARCH_PROVIDERS_DOMAINS = [
-  'duckduckgo.com',
-  'bing.com',
-  'google.com',
-  'search.yahoo.com',
-  'yandex.com',
-  'baidu.com',
-];
-
 /**
- * Resolves redirect/tracking URLs to the final destination canonical URL
- * and strips tracking parameters (utm_source, fbclid, gclid, etc.)
+ * Strips tracking parameters, fragments (#), and resolves real canonical URLs
  */
 export function resolveRealDestinationUrl(rawUrl: string): { url: string; domain: string } | null {
-  if (!rawUrl) return null;
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
 
   try {
-    let cleanUrl = rawUrl;
+    let cleanUrlStr = rawUrl.trim();
 
-    if (rawUrl.includes('uddg=') || rawUrl.includes('u=')) {
-      const parsedUrl = new URL(rawUrl);
-      const targetParam = parsedUrl.searchParams.get('uddg') || parsedUrl.searchParams.get('u') || parsedUrl.searchParams.get('target');
-      if (targetParam) {
-        cleanUrl = decodeURIComponent(targetParam);
+    // Decode wrapped redirect URLs
+    if (cleanUrlStr.includes('duckduckgo.com/l/?uddg=')) {
+      const match = cleanUrlStr.match(/uddg=([^&]+)/);
+      if (match && match[1]) {
+        cleanUrlStr = decodeURIComponent(match[1]);
+      }
+    } else if (cleanUrlStr.includes('google.com/url?q=')) {
+      const match = cleanUrlStr.match(/[?&]q=([^&]+)/);
+      if (match && match[1]) {
+        cleanUrlStr = decodeURIComponent(match[1]);
       }
     }
 
-    const parsed = new URL(cleanUrl);
-    const domain = parsed.hostname.replace(/^www\./, '').toLowerCase();
+    const parsed = new URL(cleanUrlStr);
 
-    if (SEARCH_PROVIDERS_DOMAINS.some(prov => domain.includes(prov))) {
+    // Filter out internal proxy/wrapper domains
+    if (
+      parsed.hostname.includes('duckduckgo.com') ||
+      parsed.hostname.includes('google.com/search') ||
+      parsed.hostname.includes('bing.com/search')
+    ) {
       return null;
     }
 
-    // Strip Tracking Query Parameters
-    const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid', 'ref', 'tracking_id', '_ga', 'mc_eid'];
-    trackingParams.forEach(param => parsed.searchParams.delete(param));
+    // Strip tracking parameters
+    const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid', 'ref', 'source'];
+    trackingParams.forEach((param) => parsed.searchParams.delete(param));
 
-    // Strip URL Fragment (#...)
+    // Strip fragments
     parsed.hash = '';
 
-    const normalizedUrl = parsed.toString().replace(/\/+$/, '');
-
+    const domain = parsed.hostname.replace(/^www\./, '');
     return {
-      url: normalizedUrl,
+      url: parsed.toString(),
       domain,
     };
-  } catch {
+  } catch (e) {
     return null;
   }
 }
 
 /**
- * Multi-Provider Search Aggregator Layer (v8.5)
- * Combines Local Database Index + Web APIs with Provider Failover, Multi-Domain Suffix Support, and Equal Weighting.
+ * Sarath Search Engine v15.0 Pipeline
+ * Cache-First Architecture: Checks Supabase Cache first -> Google Custom Search API Fallback -> Cache Live Results
  */
 export async function performDuckDuckGoSearch(
   query: string,
@@ -89,124 +80,121 @@ export async function performDuckDuckGoSearch(
 ): Promise<SearchProviderResponse> {
   const cleanQuery = query.trim();
   if (!cleanQuery) {
-    return { query: '', results: [], total: 0, provider: 'Sarath Search', page, pageSize };
+    return {
+      query: '',
+      original_query: '',
+      corrected_query: null,
+      is_corrected: false,
+      did_you_mean: null,
+      results: [],
+      total: 0,
+      provider: 'Sarath Search',
+      page: 1,
+      pageSize,
+    };
+  }
+
+  // STEP 1: Execute Spell Correction & Normalization Pipeline
+  const spellInfo = correctQuerySpelling(cleanQuery);
+  const targetQuery = spellInfo.isCorrected ? spellInfo.correctedQuery : cleanQuery;
+
+  // STEP 2: Search Supabase Cache First
+  try {
+    const cachedLocalResults = await searchLocalIndex({ query: targetQuery, category, limit: 20 });
+    if (cachedLocalResults && cachedLocalResults.length >= pageSize) {
+      const deduplicatedCache = deduplicateByDomain(cachedLocalResults);
+      const paginatedCache = deduplicatedCache.slice((page - 1) * pageSize, page * pageSize);
+
+      return {
+        query: targetQuery,
+        original_query: cleanQuery,
+        corrected_query: spellInfo.isCorrected ? spellInfo.correctedQuery : null,
+        is_corrected: spellInfo.isCorrected,
+        did_you_mean: spellInfo.didYouMean,
+        results: filterByCategory(paginatedCache, category),
+        total: deduplicatedCache.length,
+        provider: 'Supabase Cache Index',
+        page,
+        pageSize,
+      };
+    }
+  } catch (e) {
+    console.warn('[SearchPipeline] Supabase cache lookup notice:', e);
   }
 
   const aggregatedResults: SearchResultItem[] = [];
 
-  // Provider 1: Local Supabase BM25 Index Database
+  // STEP 3: Live Search Fallback via Google Custom Search JSON API
   try {
-    const localResults = await searchLocalIndex({ query: cleanQuery, category, limit: pageSize * 2 });
-    if (localResults && localResults.length > 0) {
-      aggregatedResults.push(...localResults);
+    const googleResults = await fetchGoogleCustomSearchResults(targetQuery, page, pageSize);
+    if (googleResults && googleResults.length > 0) {
+      aggregatedResults.push(...googleResults);
     }
   } catch (e) {
-    // Non-blocking fallback
+    console.warn('[SearchPipeline] Google CSE API call notice:', e);
   }
 
-  // Provider 2: Live Web Search Provider Integration
-  try {
-    const ddgApiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(cleanQuery)}&format=json&no_html=1&skip_disambig=1`;
-    const response = await fetch(ddgApiUrl, {
-      headers: {
-        'User-Agent': 'SarathSearchEngine/8.5 (compatible; web-indexer)',
-      },
-      next: { revalidate: 3600 },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-
-      if (data.Heading && data.AbstractURL) {
-        const resolved = resolveRealDestinationUrl(data.AbstractURL);
-        if (resolved) {
-          aggregatedResults.push({
-            id: 'sarath-abstract-1',
-            title: `${data.Heading} — Official Documentation & Overview`,
-            url: resolved.url,
-            domain: resolved.domain,
-            meta_description: data.AbstractText || data.Abstract || `Official documentation and web resources for ${data.Heading}.`,
-            favicon_url: `https://www.google.com/s2/favicons?domain=${resolved.domain}&sz=64`,
-            reading_time_min: Math.max(1, Math.ceil((data.AbstractText || '').split(' ').length / 200)),
-            published_date: 'Recently updated',
-            category: 'all',
-            score: calculateUniversalAuthorityScore(resolved.domain, true),
-          });
-        }
-      }
-
-      if (Array.isArray(data.RelatedTopics)) {
-        data.RelatedTopics.forEach((topic: any, idx: number) => {
-          if (topic.FirstURL && topic.Text) {
-            const resolved = resolveRealDestinationUrl(topic.FirstURL);
-            if (resolved) {
-              const titleParts = topic.Text.split(' - ');
-              const title = titleParts[0] || topic.Text.substring(0, 60);
-
-              aggregatedResults.push({
-                id: `sarath-topic-${idx}`,
-                title,
-                url: resolved.url,
-                domain: resolved.domain,
-                meta_description: topic.Text,
-                favicon_url: `https://www.google.com/s2/favicons?domain=${resolved.domain}&sz=64`,
-                reading_time_min: Math.max(1, Math.ceil(topic.Text.split(' ').length / 150)),
-                published_date: 'Indexed',
-                category: determineCategory(resolved.url, topic.Text),
-                score: calculateUniversalAuthorityScore(resolved.domain, false) - idx * 0.01,
-              });
-            }
-          }
-        });
-      }
+  // STEP 3: Multi-Provider & Curated Tech Index Fallback
+  if (aggregatedResults.length === 0) {
+    const curated = getCuratedFallbackResults(cleanQuery);
+    if (curated.length > 0) {
+      aggregatedResults.push(...curated);
     }
-  } catch (error) {
-    console.warn('Live Search Provider fallback', error);
   }
 
-  // Provider 3: Fallback Curated Multi-Domain Suffix Generator (.in, .org, .edu, .gov, .co.in, .io, .ai)
-  const multiDomainResults = generateMultiDomainWebResults(cleanQuery, category);
-  aggregatedResults.push(...multiDomainResults);
-
-  // STEP 3: Domain Deduplication & Equal Suffix Weighting
+  // STEP 4: Domain Deduplication & Quality Ranking
   const deduplicatedResults = deduplicateByDomain(aggregatedResults);
   deduplicatedResults.sort((a, b) => b.score - a.score);
 
-  // STEP 4: Pagination Slice
+  // STEP 5: Pagination Slice
   const startIndex = (page - 1) * pageSize;
   const paginatedResults = deduplicatedResults.slice(startIndex, startIndex + pageSize);
 
-  // STEP 5: Background Crawl Trigger
+  // STEP 6: Store Live Results in Supabase Cache & Trigger Background Web Crawling
   try {
-    if (paginatedResults[0]) {
-      crawlWebsiteUrl(paginatedResults[0].url);
+    if (paginatedResults.length > 0) {
+      cacheResultsToDatabase(paginatedResults, cleanQuery);
+      if (paginatedResults[0]) {
+        crawlWebsiteUrl(paginatedResults[0].url);
+      }
     }
   } catch (e) {
     // Non-blocking
   }
 
   return {
-    query: cleanQuery,
+    query: targetQuery,
+    original_query: cleanQuery,
+    corrected_query: spellInfo.isCorrected ? spellInfo.correctedQuery : null,
+    is_corrected: spellInfo.isCorrected,
+    did_you_mean: spellInfo.didYouMean,
     results: filterByCategory(paginatedResults, category),
     total: deduplicatedResults.length,
-    provider: 'Sarath Search',
+    provider: 'Google CSE + Live Providers',
     page,
     pageSize,
   };
 }
 
 /**
- * Calculates authority score giving EQUAL weighting across all ICANN TLDs (.in, .edu, .gov, .org, .co.in, .io, .ai)
+ * Checks if a domain is explicitly trusted
+ */
+function isTrustedDomain(domain: string): boolean {
+  const trustedList = ['wikipedia.org', 'github.com', 'developer.mozilla.org', 'w3.org', 'python.org', 'india.gov.in', 'iitk.ac.in', 'openflip.in'];
+  return trustedList.some((td) => domain === td || domain.endsWith('.' + td));
+}
+
+/**
+ * Authority Ranking based on real domain extension and type
  */
 function calculateUniversalAuthorityScore(domain: string, isAbstract: boolean): number {
   let baseScore = isAbstract ? 0.96 : 0.75;
 
-  // Give top priority to Official Docs, Educational, and Government domains
   if (domain.endsWith('.gov') || domain.endsWith('.edu') || domain.endsWith('.ac.in') || domain.endsWith('.gov.in')) {
     baseScore += 0.22;
   } else if (domain.includes('developer.mozilla.org') || domain.includes('w3.org') || domain.includes('docs.')) {
     baseScore += 0.20;
-  } else if (domain.includes('github.com') || domain.includes('npmjs.com') || domain.includes('pypi.org')) {
+  } else if (domain.includes('github.com') || domain.includes('npmjs.com') || domain.includes('pypi.org') || domain.includes('wikipedia.org')) {
     baseScore += 0.18;
   } else if (domain.endsWith('.org') || domain.endsWith('.in') || domain.endsWith('.co.in') || domain.endsWith('.io') || domain.endsWith('.ai')) {
     baseScore += 0.15;
@@ -217,6 +205,9 @@ function calculateUniversalAuthorityScore(domain: string, isAbstract: boolean): 
   return Number(Math.min(0.99, baseScore).toFixed(2));
 }
 
+/**
+ * Enforces strict domain deduplication (1 result per domain per page)
+ */
 function deduplicateByDomain(items: SearchResultItem[]): SearchResultItem[] {
   const domainMap = new Map<string, SearchResultItem>();
 
@@ -248,104 +239,124 @@ function filterByCategory(items: SearchResultItem[], category: string): SearchRe
 }
 
 /**
- * Generates high-quality results across diverse public TLD extensions (.in, .org, .edu, .gov, .co.in, .io, .ai)
+ * Background caching of real search result metadata to Supabase indexed_pages
  */
-function generateMultiDomainWebResults(q: string, category: string): SearchResultItem[] {
-  const cleanQ = q.toLowerCase().replace(/[^a-z0-9]/g, '');
+async function cacheResultsToDatabase(results: SearchResultItem[], query: string) {
+  if (!results || results.length === 0) return;
 
-  const curatedSources = [
-    {
-      title: `${q} Official Global Portal`,
-      domain: `${cleanQ}.org`,
-      url: `https://${cleanQ}.org`,
-      desc: `Official organizational portal and authoritative global specifications for ${q}.`,
-      category: 'all',
-      score: 0.98,
-    },
-    {
-      title: `${q} — MDN Web Documentation & Specifications`,
-      domain: 'developer.mozilla.org',
-      url: `https://developer.mozilla.org/en-US/search?q=${encodeURIComponent(q)}`,
-      desc: `In-depth documentation, technical guides, standards, and practical code examples regarding ${q}.`,
-      category: 'docs',
-      score: 0.95,
-    },
-    {
-      title: `${q} Indian National Institute & Academic Research`,
-      domain: `${cleanQ}.ac.in`,
-      url: `https://${cleanQ}.ac.in`,
-      desc: `Academic research, institutional specifications, and education resources for ${q}.`,
-      category: 'docs',
-      score: 0.93,
-    },
-    {
-      title: `${q} Open Source Core Repository`,
-      domain: 'github.com',
-      url: `https://github.com/search?q=${encodeURIComponent(q)}`,
-      desc: `Discover top open-source projects, libraries, core repositories, and developer tools for ${q}.`,
-      category: 'docs',
-      score: 0.91,
-    },
-    {
-      title: `${q} Indian Commercial & Regional Portal`,
-      domain: `${cleanQ}.co.in`,
-      url: `https://${cleanQ}.co.in`,
-      desc: `Regional solutions, enterprise deployment guides, and commercial applications for ${q}.`,
-      category: 'all',
-      score: 0.89,
-    },
-    {
-      title: `${q} Artificial Intelligence & Next-Gen Platform`,
-      domain: `${cleanQ}.ai`,
-      url: `https://${cleanQ}.ai`,
-      desc: `Artificial Intelligence innovations, machine learning workflows, and automated tools for ${q}.`,
-      category: 'all',
-      score: 0.87,
-    },
-    {
-      title: `${q} Developer Ecosystem & API Hub`,
-      domain: `${cleanQ}.io`,
-      url: `https://${cleanQ}.io`,
-      desc: `Developer ecosystem, API documentation, SDKs, and developer integration resources for ${q}.`,
-      category: 'docs',
-      score: 0.85,
-    },
-    {
-      title: `${q} — Wikipedia Encyclopedia Reference`,
-      domain: 'wikipedia.org',
-      url: `https://en.wikipedia.org/wiki/${encodeURIComponent(q)}`,
-      desc: `Explore historical background, definitions, key specifications, and technical details for ${q}.`,
-      category: 'all',
-      score: 0.84,
-    },
-    {
-      title: `${q} Package Distribution & Releases`,
-      domain: 'npmjs.com',
-      url: `https://www.npmjs.com/search?q=${encodeURIComponent(q)}`,
-      desc: `Explore npm package releases, installation guides, dependency statistics, and versions for ${q}.`,
-      category: 'docs',
-      score: 0.82,
-    },
-    {
-      title: `Latest News & Technical Breakthroughs on ${q}`,
-      domain: 'news.ycombinator.com',
-      url: `https://hn.algolia.com/?query=${encodeURIComponent(q)}`,
-      desc: `Discussions, community opinions, technology breakthroughs, and technical analysis of ${q}.`,
-      category: 'news',
-      score: 0.80,
-    },
-  ];
+  try {
+    const rowsToUpsert = results.map((r) => ({
+      url: r.url,
+      title: r.title,
+      domain: r.domain,
+      meta_description: r.meta_description,
+      favicon_url: r.favicon_url,
+      meta_keywords: `${query}, ${r.domain}, web search`,
+      search_score: r.score,
+      indexed_time: new Date().toISOString(),
+    }));
 
-  return curatedSources.map((source, index) => ({
-    id: `sarath-res-${index + 1}`,
-    title: source.title,
-    url: source.url,
-    domain: source.domain,
-    meta_description: source.desc,
-    favicon_url: `https://www.google.com/s2/favicons?domain=${source.domain}&sz=64`,
-    reading_time_min: Math.max(1, Math.floor(Math.random() * 4) + 2),
-    published_date: 'Recently updated',
-    category: source.category as any,
-    score: source.score,
-  }));
+    await supabaseAdmin
+      .from('indexed_pages')
+      .upsert(rowsToUpsert, { onConflict: 'url', ignoreDuplicates: true });
+  } catch (err) {
+    // Non-blocking background caching
+  }
+}
+
+/**
+ * Returns trusted curated web results for well-known tech terms when external search APIs are unavailable
+ */
+export function getCuratedFallbackResults(query: string): SearchResultItem[] {
+  const q = query.toLowerCase().trim();
+
+  if (q.includes('next.js') || q.includes('nextjs')) {
+    return [
+      {
+        id: 'nextjs-home',
+        title: 'Next.js 15 by Vercel - The React Framework for the Web',
+        url: 'https://nextjs.org',
+        domain: 'nextjs.org',
+        meta_description: 'Used by some of the world\'s largest companies, Next.js enables you to create high-quality web applications with React components, server-side rendering, and static generation.',
+        favicon_url: 'https://www.google.com/s2/favicons?domain=nextjs.org&sz=64',
+        reading_time_min: 2,
+        published_date: 'Official Site',
+        category: 'docs',
+        score: 0.98,
+        verified_domain: true,
+      },
+      {
+        id: 'nextjs-docs',
+        title: 'Next.js 15 Documentation & Server Actions',
+        url: 'https://nextjs.org/docs',
+        domain: 'nextjs.org',
+        meta_description: 'Welcome to the Next.js documentation. Learn how to build full-stack React applications with App Router, Server Actions, React Server Components, and Caching.',
+        favicon_url: 'https://www.google.com/s2/favicons?domain=nextjs.org&sz=64',
+        reading_time_min: 3,
+        published_date: 'Documentation',
+        category: 'docs',
+        score: 0.96,
+        verified_domain: true,
+      },
+      {
+        id: 'vercel-blog-next15',
+        title: 'Vercel Blog - Announcing Next.js 15',
+        url: 'https://vercel.com/blog/next-15',
+        domain: 'vercel.com',
+        meta_description: 'Next.js 15 is now generally available. Featuring support for React 19, async request APIs, un-cached GET requests by default, and improved build speeds.',
+        favicon_url: 'https://www.google.com/s2/favicons?domain=vercel.com&sz=64',
+        reading_time_min: 4,
+        published_date: 'Official Announcement',
+        category: 'news',
+        score: 0.94,
+        verified_domain: true,
+      },
+      {
+        id: 'github-nextjs',
+        title: 'GitHub - vercel/next.js: The React Framework',
+        url: 'https://github.com/vercel/next.js',
+        domain: 'github.com',
+        meta_description: 'Official open source repository for Next.js by Vercel. Explore source code, releases, bug reports, and discussions.',
+        favicon_url: 'https://www.google.com/s2/favicons?domain=github.com&sz=64',
+        reading_time_min: 2,
+        published_date: 'Open Source Repository',
+        category: 'docs',
+        score: 0.92,
+        verified_domain: true,
+      },
+      {
+        id: 'npm-next',
+        title: 'next - npm Package',
+        url: 'https://www.npmjs.com/package/next',
+        domain: 'npmjs.com',
+        meta_description: 'The React Framework for the Web. Latest version 15.x. Install via npm install next react react-dom.',
+        favicon_url: 'https://www.google.com/s2/favicons?domain=npmjs.com&sz=64',
+        reading_time_min: 1,
+        published_date: 'Package Manager',
+        category: 'docs',
+        score: 0.90,
+        verified_domain: true,
+      },
+    ];
+  }
+
+  if (q.includes('ai') || q.includes('artificial intelligence')) {
+    return [
+      {
+        id: 'wiki-ai',
+        title: 'Artificial Intelligence - Wikipedia',
+        url: 'https://en.wikipedia.org/wiki/Artificial_intelligence',
+        domain: 'wikipedia.org',
+        meta_description: 'Artificial intelligence (AI) is the intelligence of machines or software, as opposed to the intelligence of living beings, primarily of humans.',
+        favicon_url: 'https://www.google.com/s2/favicons?domain=wikipedia.org&sz=64',
+        reading_time_min: 5,
+        published_date: 'Encyclopedia',
+        category: 'all',
+        score: 0.97,
+        verified_domain: true,
+      },
+    ];
+  }
+
+  return [];
 }
