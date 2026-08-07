@@ -132,7 +132,7 @@ Return ONLY valid JSON matching this schema:
     query: cleanQuery,
     overview: results.length > 0
       ? `${cleanQuery} is a widely referenced topic across major web documentation and authoritative references.`
-      : "I couldn't find enough reliable information to answer confidently.",
+      : "I couldn't find enough reliable information.",
     introduction: `${cleanQuery} encompasses essential concepts, frameworks, and key principles.`,
     detailed_explanation: results.length > 0
       ? `${cleanQuery} is detailed across multiple canonical web references. You can explore the verified sources below for complete details.`

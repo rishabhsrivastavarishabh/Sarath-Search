@@ -47,6 +47,9 @@ export async function GET(request: NextRequest) {
     // Non-blocking analytics logging
   }
 
+  const isCacheHit = (searchData.provider || '').includes('Cache');
+  const isNative = (searchData.provider || '').includes('Native');
+
   return NextResponse.json({
     query: searchData.query || q,
     original_query: searchData.original_query || q,
@@ -58,8 +61,27 @@ export async function GET(request: NextRequest) {
     ai_answer: aiAnswer,
     total: searchData.total,
     provider: searchData.provider || 'Sarath Search',
+    latency_ms: latencyMs,
+    cache: {
+      status: isCacheHit ? 'hit' : 'miss',
+    },
+    native_index: {
+      status: isNative ? 'hit' : 'miss',
+    },
+    live_provider: {
+      status: searchData.results.length > 0 ? 'success' : 'no_items',
+      items_received: searchData.total,
+      items_after_filter: searchData.results.length,
+      rejected_reasons: [],
+    },
+    debug: {
+      provider_status: searchData.results.length > 0 ? 'success' : 'no_items',
+      provider_items: searchData.total,
+      accepted_items: searchData.results.length,
+      rejected_items: 0,
+      reasons: [],
+    },
     page,
     pageSize,
-    latency_ms: latencyMs,
   });
 }

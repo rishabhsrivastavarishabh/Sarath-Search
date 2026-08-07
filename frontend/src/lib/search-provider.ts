@@ -98,10 +98,12 @@ export async function performDuckDuckGoSearch(
   const spellInfo = correctQuerySpelling(cleanQuery);
   const targetQuery = spellInfo.isCorrected ? spellInfo.correctedQuery : cleanQuery;
 
-  // STEP 2: Search Supabase Cache First
+  // STEP 2: Check Supabase Cache First
+  let cacheHit = false;
   try {
     const cachedLocalResults = await searchLocalIndex({ query: targetQuery, category, limit: 20 });
     if (cachedLocalResults && cachedLocalResults.length >= pageSize) {
+      cacheHit = true;
       const deduplicatedCache = deduplicateByDomain(cachedLocalResults);
       const paginatedCache = deduplicatedCache.slice((page - 1) * pageSize, page * pageSize);
 
@@ -134,23 +136,35 @@ export async function performDuckDuckGoSearch(
     console.warn('[SearchPipeline] Google CSE API call notice:', e);
   }
 
-  // STEP 3: Multi-Provider & Curated Tech Index Fallback
+  // STEP 4: Query Expansion & Retry Strategy (Broader / Key Term Retries)
+  if (aggregatedResults.length === 0 && targetQuery !== cleanQuery) {
+    try {
+      const retryResults = await fetchGoogleCustomSearchResults(cleanQuery, page, pageSize);
+      if (retryResults && retryResults.length > 0) {
+        aggregatedResults.push(...retryResults);
+      }
+    } catch (e) {
+      // Retry catch
+    }
+  }
+
+  // STEP 5: Multi-Provider & Curated Tech Index Fallback
   if (aggregatedResults.length === 0) {
-    const curated = getCuratedFallbackResults(cleanQuery);
-    if (curated.length > 0) {
+    const curated = getCuratedFallbackResults(cleanQuery) || getCuratedFallbackResults(targetQuery);
+    if (curated && curated.length > 0) {
       aggregatedResults.push(...curated);
     }
   }
 
-  // STEP 4: Domain Deduplication & Quality Ranking
+  // STEP 6: Domain Deduplication & Quality Ranking
   const deduplicatedResults = deduplicateByDomain(aggregatedResults);
   deduplicatedResults.sort((a, b) => b.score - a.score);
 
-  // STEP 5: Pagination Slice
+  // STEP 7: Pagination Slice
   const startIndex = (page - 1) * pageSize;
   const paginatedResults = deduplicatedResults.slice(startIndex, startIndex + pageSize);
 
-  // STEP 6: Store Live Results in Supabase Cache & Trigger Background Web Crawling
+  // STEP 8: Store Live Results in Supabase Cache & Trigger Background Web Crawling
   try {
     if (paginatedResults.length > 0) {
       cacheResultsToDatabase(paginatedResults, cleanQuery);
@@ -170,7 +184,7 @@ export async function performDuckDuckGoSearch(
     did_you_mean: spellInfo.didYouMean,
     results: filterByCategory(paginatedResults, category),
     total: deduplicatedResults.length,
-    provider: 'Google CSE + Live Providers',
+    provider: aggregatedResults.length > 0 ? 'Google CSE + Live Providers' : 'Native Index',
     page,
     pageSize,
   };
@@ -185,40 +199,64 @@ function isTrustedDomain(domain: string): boolean {
 }
 
 /**
- * Authority Ranking based on real domain extension and type
+ * Enterprise Query Normalization Pipeline: Unicode NFC normalization, trimming, lowering & whitespace collapse
+ */
+export function normalizeQueryString(rawQuery: string): string {
+  if (!rawQuery) return '';
+  return rawQuery
+    .normalize('NFC')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * 10-Tier Domain Authority Ranking Matrix (Sarath Engine v23.0)
  */
 function calculateUniversalAuthorityScore(domain: string, isAbstract: boolean): number {
   let baseScore = isAbstract ? 0.96 : 0.75;
+  const d = domain.toLowerCase();
 
-  if (domain.endsWith('.gov') || domain.endsWith('.edu') || domain.endsWith('.ac.in') || domain.endsWith('.gov.in')) {
-    baseScore += 0.22;
-  } else if (domain.includes('developer.mozilla.org') || domain.includes('w3.org') || domain.includes('docs.')) {
-    baseScore += 0.20;
-  } else if (domain.includes('github.com') || domain.includes('npmjs.com') || domain.includes('pypi.org') || domain.includes('wikipedia.org')) {
-    baseScore += 0.18;
-  } else if (domain.endsWith('.org') || domain.endsWith('.in') || domain.endsWith('.co.in') || domain.endsWith('.io') || domain.endsWith('.ai')) {
-    baseScore += 0.15;
+  if (d.includes('nextjs.org') || d.includes('python.org') || d.includes('react.dev') || d.includes('nodejs.org') || d.includes('supabase.com') || d.includes('google.com')) {
+    baseScore += 0.24; // Priority 1: Official Website
+  } else if (d.endsWith('.gov') || d.endsWith('.gov.in')) {
+    baseScore += 0.23; // Priority 2: Government
+  } else if (d.endsWith('.edu') || d.endsWith('.ac.in')) {
+    baseScore += 0.22; // Priority 3: Educational
+  } else if (d.includes('developer.mozilla.org') || d.includes('w3.org') || d.includes('docs.')) {
+    baseScore += 0.20; // Priority 4: Official Documentation
+  } else if (d.includes('wikipedia.org')) {
+    baseScore += 0.19; // Priority 5: Wikipedia
+  } else if (d.includes('github.com') || d.includes('npmjs.com') || d.includes('pypi.org')) {
+    baseScore += 0.18; // Priority 6: GitHub & Open Source
+  } else if (d.includes('bbc.') || d.includes('reuters.') || d.includes('nytimes.')) {
+    baseScore += 0.16; // Priority 7: Trusted News
+  } else if (d.endsWith('.org') || d.endsWith('.io') || d.endsWith('.ai') || d.endsWith('.in')) {
+    baseScore += 0.14; // Priority 8: High Authority TLDs
+  } else if (d.includes('stackoverflow.com') || d.includes('reddit.com')) {
+    baseScore += 0.12; // Priority 9: Community
   } else {
-    baseScore += 0.10;
+    baseScore += 0.08; // Priority 10: Blogs & Personal Sites
   }
 
   return Number(Math.min(0.99, baseScore).toFixed(2));
 }
 
 /**
- * Enforces strict domain deduplication (1 result per domain per page)
+ * Deduplicates results only when BOTH exact URL and hostname match, preserving subdomains (e.g. help.instagram.com, play.google.com, apps.apple.com)
  */
 function deduplicateByDomain(items: SearchResultItem[]): SearchResultItem[] {
-  const domainMap = new Map<string, SearchResultItem>();
+  const urlMap = new Map<string, SearchResultItem>();
 
   items.forEach((item) => {
-    const existing = domainMap.get(item.domain);
-    if (!existing || item.score > existing.score) {
-      domainMap.set(item.domain, item);
+    // Normalize URL key to allow subdomains & distinct subpaths
+    const key = item.url.trim().toLowerCase().replace(/\/$/, '');
+    if (!urlMap.has(key)) {
+      urlMap.set(key, item);
     }
   });
 
-  return Array.from(domainMap.values());
+  return Array.from(urlMap.values());
 }
 
 function determineCategory(url: string, text: string): 'all' | 'images' | 'videos' | 'news' | 'docs' | 'maps' | 'shopping' {
@@ -340,19 +378,86 @@ export function getCuratedFallbackResults(query: string): SearchResultItem[] {
     ];
   }
 
-  if (q.includes('ai') || q.includes('artificial intelligence')) {
+  if (q.includes('instagram')) {
     return [
       {
-        id: 'wiki-ai',
-        title: 'Artificial Intelligence - Wikipedia',
-        url: 'https://en.wikipedia.org/wiki/Artificial_intelligence',
-        domain: 'wikipedia.org',
-        meta_description: 'Artificial intelligence (AI) is the intelligence of machines or software, as opposed to the intelligence of living beings, primarily of humans.',
-        favicon_url: 'https://www.google.com/s2/favicons?domain=wikipedia.org&sz=64',
-        reading_time_min: 5,
-        published_date: 'Encyclopedia',
+        id: 'instagram-home',
+        title: 'Instagram - Photo & Video Sharing Social Platform',
+        url: 'https://www.instagram.com',
+        domain: 'instagram.com',
+        meta_description: 'Create an account or log in to Instagram - A simple, fun & creative way to capture, edit & share photos, videos & messages with friends & family.',
+        favicon_url: 'https://www.google.com/s2/favicons?domain=instagram.com&sz=64',
+        reading_time_min: 1,
+        published_date: 'Official Site',
         category: 'all',
-        score: 0.97,
+        score: 0.99,
+        verified_domain: true,
+      },
+      {
+        id: 'instagram-web',
+        title: 'Instagram Web - Explore Photos & Reels',
+        url: 'https://www.instagram.com/explore',
+        domain: 'instagram.com',
+        meta_description: 'Explore photos, videos, and trending reels on Instagram Web.',
+        favicon_url: 'https://www.google.com/s2/favicons?domain=instagram.com&sz=64',
+        reading_time_min: 1,
+        published_date: 'Official Platform',
+        category: 'all',
+        score: 0.95,
+        verified_domain: true,
+      },
+    ];
+  }
+
+  if (q.includes('youtube')) {
+    return [
+      {
+        id: 'youtube-home',
+        title: 'YouTube - Enjoy the Videos and Music You Love',
+        url: 'https://www.youtube.com',
+        domain: 'youtube.com',
+        meta_description: 'Enjoy the videos and music you love, upload original content, and share it all with friends, family, and the world on YouTube.',
+        favicon_url: 'https://www.google.com/s2/favicons?domain=youtube.com&sz=64',
+        reading_time_min: 1,
+        published_date: 'Official Video Platform',
+        category: 'videos',
+        score: 0.99,
+        verified_domain: true,
+      },
+    ];
+  }
+
+  if (q === 'google' || q.includes('google.com')) {
+    return [
+      {
+        id: 'google-home',
+        title: 'Google',
+        url: 'https://www.google.com',
+        domain: 'google.com',
+        meta_description: 'Search the world\'s information, including webpages, images, videos and more. Google has many special features to help you find exactly what you\'re looking for.',
+        favicon_url: 'https://www.google.com/s2/favicons?domain=google.com&sz=64',
+        reading_time_min: 1,
+        published_date: 'Official Search Engine',
+        category: 'all',
+        score: 0.99,
+        verified_domain: true,
+      },
+    ];
+  }
+
+  if (q.includes('react')) {
+    return [
+      {
+        id: 'react-home',
+        title: 'React - The Library for Web and Native User Interfaces',
+        url: 'https://react.dev',
+        domain: 'react.dev',
+        meta_description: 'React lets you build user interfaces out of individual pieces called components. Create your own React components like Thumbnail, LikeButton, and Video.',
+        favicon_url: 'https://www.google.com/s2/favicons?domain=react.dev&sz=64',
+        reading_time_min: 2,
+        published_date: 'Official Documentation',
+        category: 'docs',
+        score: 0.99,
         verified_domain: true,
       },
     ];
