@@ -16,11 +16,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -39,9 +45,12 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Newspaper
+import androidx.compose.material.icons.filled.NorthWest
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbDown
@@ -63,6 +72,10 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import com.example.data.model.ImageResultItem
+import com.example.data.model.NewsResultItem
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -820,49 +833,498 @@ fun OrganicResultCard(
 }
 
 /**
- * Honest "Coming Soon" Empty State for Images and News tabs per Requirement 4.
+ * Image Search Results Grid
  */
 @Composable
-fun TabComingSoonView(
-    tabName: String,
+fun ImagesResultView(
+    images: List<ImageResultItem>,
+    isLoading: Boolean,
+    onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = LocalSarathColors.current
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+    if (isLoading && images.isEmpty()) {
         Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape)
-                .background(colors.accentGold.copy(alpha = 0.12f)),
+            modifier = modifier.fillMaxWidth().padding(32.dp),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = if (tabName == "Images") Icons.Default.Image else Icons.Default.Newspaper,
-                contentDescription = null,
-                tint = colors.accentGold,
-                modifier = Modifier.size(32.dp)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                WheelSpokeMark(size = 36.dp, isSpinning = true)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Discovering visual media...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.inkMuted
+                )
+            }
+        }
+    } else if (images.isEmpty()) {
+        Box(
+            modifier = modifier.fillMaxWidth().padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "No images found for this query",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.inkMuted
             )
         }
-        Spacer(modifier = Modifier.height(14.dp))
-        Text(
-            text = "$tabName tab is coming soon",
-            style = MaterialTheme.typography.titleLarge,
-            color = colors.ink,
-            fontFamily = FontFamily.Serif
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = "We are currently tuning our India-first $tabName index pipeline. Rather than showing fabricated results, we are polishing our native crawling and licensing sources.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.inkMuted,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            lineHeight = 20.sp
-        )
+    } else {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .testTag("images_results_grid"),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(images) { item ->
+                ImageResultCard(
+                    imageItem = item,
+                    onClick = { onOpenUrl(item.sourceUrl) }
+                )
+            }
+        }
     }
 }
+
+@Composable
+fun ImageResultCard(
+    imageItem: ImageResultItem,
+    onClick: () -> Unit
+) {
+    val colors = LocalSarathColors.current
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .testTag("image_result_card"),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surface)
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(130.dp)
+                    .background(colors.border.copy(alpha = 0.2f))
+            ) {
+                SubcomposeAsyncImage(
+                    model = imageItem.imageUrl,
+                    contentDescription = imageItem.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    loading = {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            WheelSpokeMark(size = 20.dp, isSpinning = true)
+                        }
+                    },
+                    error = {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Image, contentDescription = null, tint = colors.inkMuted)
+                        }
+                    }
+                )
+
+                if (!imageItem.dimensions.isNullOrBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color.Black.copy(alpha = 0.65f))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = imageItem.dimensions,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            fontSize = 9.sp
+                        )
+                    }
+                }
+            }
+
+            Column(modifier = Modifier.padding(10.dp)) {
+                Text(
+                    text = imageItem.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.ink,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = imageItem.domain ?: "web source",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.accentTeal,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = null,
+                        tint = colors.inkMuted,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * News Search Results List
+ */
+@Composable
+fun NewsResultView(
+    news: List<NewsResultItem>,
+    isLoading: Boolean,
+    onOpenUrl: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = LocalSarathColors.current
+
+    if (isLoading && news.isEmpty()) {
+        Box(
+            modifier = modifier.fillMaxWidth().padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                WheelSpokeMark(size = 36.dp, isSpinning = true)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Aggregating news dispatches...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.inkMuted
+                )
+            }
+        }
+    } else if (news.isEmpty()) {
+        Box(
+            modifier = modifier.fillMaxWidth().padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "No news found for this query",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.inkMuted
+            )
+        }
+    } else {
+        LazyColumn(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .testTag("news_results_list"),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(items = news, key = { it.url }) { item ->
+                NewsResultCard(
+                    newsItem = item,
+                    onClick = { onOpenUrl(item.url) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun NewsResultCard(
+    newsItem: NewsResultItem,
+    onClick: () -> Unit
+) {
+    val colors = LocalSarathColors.current
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .testTag("news_result_card"),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surface)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Source & Published time row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(colors.accentTeal.copy(alpha = 0.15f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = newsItem.source ?: newsItem.domain ?: "News",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.accentTeal,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    if (newsItem.lang?.equals("HI", ignoreCase = true) == true) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(SarathBadgeHi.copy(alpha = 0.15f))
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "HI · हिंदी",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SarathBadgeHi,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+
+                    if (newsItem.publishedTime != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = newsItem.publishedTime,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.inkMuted,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                    contentDescription = null,
+                    tint = colors.inkMuted,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = newsItem.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.ink,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                lineHeight = 20.sp
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = newsItem.snippet,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.inkMuted,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * Dropdown / Overlay Card for Asynchronous Query Suggestions
+ */
+@Composable
+fun SearchSuggestionsDropdown(
+    suggestions: List<String>,
+    onSelectSuggestion: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (suggestions.isEmpty()) return
+    val colors = LocalSarathColors.current
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+            .testTag("search_suggestions_card"),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            suggestions.forEach { suggestion ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectSuggestion(suggestion) }
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .testTag("suggestion_item_$suggestion"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = if (suggestion.startsWith("!")) Icons.Default.AutoAwesome else Icons.Default.Search,
+                            contentDescription = null,
+                            tint = if (suggestion.startsWith("!")) colors.accentGold else colors.inkMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = suggestion,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.ink,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.NorthWest,
+                        contentDescription = "Fill suggestion",
+                        tint = colors.inkMuted,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Local-only Search History Section (Last 5 queries from Room)
+ */
+@Composable
+fun RecentSearchesSection(
+    recentSearches: List<String>,
+    onSelectQuery: (String) -> Unit,
+    onDeleteQuery: (String) -> Unit,
+    onClearAll: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (recentSearches.isEmpty()) return
+    val colors = LocalSarathColors.current
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = null,
+                    tint = colors.accentTeal,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Recent Searches",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.ink,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(colors.accentTeal.copy(alpha = 0.12f))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "Device-only",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.accentTeal,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+
+            androidx.compose.material3.TextButton(
+                onClick = onClearAll,
+                modifier = Modifier.testTag("clear_all_history_button")
+            ) {
+                Text(
+                    text = "Clear",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.inkMuted
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                .background(colors.surface)
+        ) {
+            recentSearches.take(5).forEachIndexed { index, query ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectQuery(query) }
+                        .padding(horizontal = 12.dp, vertical = 9.dp)
+                        .testTag("recent_search_item_$index"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            tint = colors.accentGold,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = query,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.ink,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { onDeleteQuery(query) },
+                        modifier = Modifier.size(26.dp).testTag("delete_recent_search_$index")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = "Remove query",
+                            tint = colors.inkMuted,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+                if (index < recentSearches.take(5).size - 1) {
+                    androidx.compose.material3.HorizontalDivider(color = colors.border.copy(alpha = 0.5f))
+                }
+            }
+        }
+    }
+}
+

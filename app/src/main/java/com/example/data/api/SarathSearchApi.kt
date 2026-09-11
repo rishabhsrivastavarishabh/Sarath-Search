@@ -2,6 +2,7 @@ package com.example.data.api
 
 import com.example.data.model.AiOverviewResponse
 import com.example.data.model.SearchResponse
+import com.example.data.model.SuggestResponse
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.OkHttpClient
@@ -23,6 +24,11 @@ interface SarathSearchApi {
     suspend fun getAiOverview(
         @Query("q") query: String
     ): AiOverviewResponse
+
+    @GET("functions/v1/suggest")
+    suspend fun getSuggestions(
+        @Query("q") query: String
+    ): SuggestResponse
 
     companion object {
         private const val BASE_URL = "https://ahnqtidjqriurlzzevkb.supabase.co/"

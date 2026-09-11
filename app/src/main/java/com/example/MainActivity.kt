@@ -1,5 +1,6 @@
 package com.example
 
+import android.app.Application
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -14,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.SearchViewModel
@@ -39,7 +41,11 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun SarathSearchApp(
-    viewModel: SearchViewModel = viewModel()
+    viewModel: SearchViewModel = viewModel(
+        factory = SearchViewModel.provideFactory(
+            LocalContext.current.applicationContext as Application
+        )
+    )
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val systemDark = isSystemInDarkTheme()
@@ -64,10 +70,13 @@ fun SarathSearchApp(
                     query = uiState.query,
                     onQueryChange = { viewModel.onQueryChange(it) },
                     onSearchSubmit = { custom -> viewModel.executeSearch(custom) },
+                    suggestions = uiState.suggestions,
+                    onSelectSuggestion = { viewModel.selectSuggestion(it) },
+                    recentSearches = uiState.recentSearches,
+                    onDeleteRecentQuery = { viewModel.deleteHistoryItem(it) },
+                    onClearRecentSearches = { viewModel.clearSearchHistory() },
                     selectedFilter = uiState.selectedLanguageFilter,
                     onFilterSelect = { viewModel.setLanguageFilter(it) },
-                    isDarkMode = effectiveDarkMode,
-                    onToggleTheme = { viewModel.toggleDarkMode(effectiveDarkMode) },
                     onOpenSettings = { showSettingsDialog = true },
                     onOpenBangs = { showBangsDialog = true },
                     onOpenPrivacy = { showPrivacyDialog = true },
@@ -82,16 +91,24 @@ fun SarathSearchApp(
                     uiState = uiState,
                     onQueryChange = { viewModel.onQueryChange(it) },
                     onSearchSubmit = { custom -> viewModel.executeSearch(custom) },
+                    onSelectSuggestion = { viewModel.selectSuggestion(it) },
                     onGoHome = { viewModel.clearSearch() },
                     onFilterSelect = { viewModel.setLanguageFilter(it) },
                     onTabSelect = { viewModel.setSelectedTab(it) },
-                    isDarkMode = effectiveDarkMode,
-                    onToggleTheme = { viewModel.toggleDarkMode(effectiveDarkMode) },
+                    onOpenUrl = { viewModel.openInAppUrl(it) },
                     onToggleDebugView = { viewModel.toggleDebugView() },
                     onFeedback = { url, isUp -> viewModel.recordFeedback(url, isUp) },
                     onDismissBang = { viewModel.dismissBang() },
                     onVoiceClick = { showVoiceSearchDialog = true },
                     onLensClick = { showLensSearchDialog = true }
+                )
+            }
+
+            // In-App Web Browser Dialog when user clicks any result or website
+            if (uiState.activeInAppUrl != null) {
+                com.example.ui.components.InAppBrowserDialog(
+                    url = uiState.activeInAppUrl!!,
+                    onDismiss = { viewModel.closeInAppUrl() }
                 )
             }
 
@@ -106,6 +123,11 @@ fun SarathSearchApp(
                     onToggleTheme = { viewModel.toggleDarkMode(effectiveDarkMode) },
                     showDebugView = uiState.showDebugView,
                     onToggleDebugView = { viewModel.toggleDebugView() },
+                    onSelectBang = { bangTrigger ->
+                        viewModel.onQueryChange(bangTrigger)
+                        showSettingsDialog = false
+                    },
+                    onClearHistory = { viewModel.clearSearchHistory() },
                     onDismiss = { showSettingsDialog = false }
                 )
             }

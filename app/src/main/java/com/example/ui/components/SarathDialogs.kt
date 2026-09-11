@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,15 +16,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.AlertDialog
@@ -36,6 +42,10 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -147,22 +157,175 @@ fun SettingsDialog(
     onToggleTheme: () -> Unit,
     showDebugView: Boolean,
     onToggleDebugView: () -> Unit,
+    onSelectBang: ((String) -> Unit)? = null,
+    onClearHistory: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val colors = LocalSarathColors.current
+    var showBangsSubSection by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                text = "Search Settings",
-                style = MaterialTheme.typography.titleLarge,
-                color = colors.ink,
-                fontFamily = FontFamily.Serif
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = null,
+                    tint = colors.accentTeal,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Preferences & Settings",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = colors.ink,
+                    fontFamily = FontFamily.Serif
+                )
+            }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // Theme Selection
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Appearance & Theme",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.ink,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = if (isDarkMode) "Dark mode active" else "Warm light mode active",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.inkMuted
+                        )
+                    }
+                    IconButton(
+                        onClick = onToggleTheme,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.accentGold.copy(alpha = 0.15f))
+                            .testTag("theme_toggle_button")
+                    ) {
+                        Icon(
+                            imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            contentDescription = "Toggle Dark or Light Theme",
+                            tint = colors.accentGold
+                        )
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = colors.border)
+
+                // Bangs Shortcuts Directory
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showBangsSubSection = !showBangsSubSection }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Bangs & Shortcuts",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = colors.ink,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(colors.accentGold.copy(alpha = 0.15f))
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "${DEFAULT_BANGS.size} available",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.accentGold,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Instant redirection shortcuts like !w, !yt, !gh",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.inkMuted
+                            )
+                        }
+
+                        Icon(
+                            imageVector = if (showBangsSubSection) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = "Toggle Bangs",
+                            tint = colors.inkMuted
+                        )
+                    }
+
+                    AnimatedVisibility(visible = showBangsSubSection) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.bg)
+                                .padding(8.dp)
+                        ) {
+                            DEFAULT_BANGS.forEach { bang ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onSelectBang?.invoke(bang.trigger + " ")
+                                            onDismiss()
+                                        }
+                                        .padding(vertical = 6.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = bang.trigger,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = colors.accentTeal,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = bang.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = colors.ink,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                    Text(
+                                        text = "Insert",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.accentGold,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = colors.border)
+
                 // Safe Search
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -174,7 +337,8 @@ fun SettingsDialog(
                             text = "SafeSearch Filter",
                             style = MaterialTheme.typography.titleMedium,
                             color = colors.ink,
-                            fontSize = 15.sp
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                         Text(
                             text = "Filter explicit web and media content",
@@ -199,7 +363,8 @@ fun SettingsDialog(
                     text = "Relevance Weighting",
                     style = MaterialTheme.typography.titleMedium,
                     color = colors.ink,
-                    fontSize = 15.sp
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -240,36 +405,37 @@ fun SettingsDialog(
                     }
                 }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = colors.border)
+                if (onClearHistory != null) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = colors.border)
 
-                // Theme Toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Theme (Session)",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = colors.ink,
-                            fontSize = 15.sp
-                        )
-                        Text(
-                            text = if (isDarkMode) "Dark theme active" else "Light theme active",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.inkMuted
-                        )
-                    }
-                    IconButton(
-                        onClick = onToggleTheme,
-                        modifier = Modifier.clip(CircleShape).background(colors.accentGold.copy(alpha = 0.12f))
+                    // Clear local history
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
-                            contentDescription = "Toggle Theme",
-                            tint = colors.accentGold
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Search History (Room)",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colors.ink,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Stored only on device (max 5 queries)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.inkMuted
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                onClearHistory()
+                                onDismiss()
+                            }
+                        ) {
+                            Text("Clear", color = colors.accentTeal, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
 
@@ -286,7 +452,8 @@ fun SettingsDialog(
                             text = "Dev / Provider Info",
                             style = MaterialTheme.typography.titleMedium,
                             color = colors.ink,
-                            fontSize = 15.sp
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                         Text(
                             text = "Show search provider chain and latency",

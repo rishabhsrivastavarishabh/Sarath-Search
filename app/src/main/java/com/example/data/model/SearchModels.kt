@@ -46,6 +46,33 @@ data class BangShortcut(
     val urlTemplate: String
 )
 
+@JsonClass(generateAdapter = true)
+data class ImageResultItem(
+    @Json(name = "title") val title: String,
+    @Json(name = "imageUrl") val imageUrl: String,
+    @Json(name = "sourceUrl") val sourceUrl: String,
+    @Json(name = "domain") val domain: String? = null,
+    @Json(name = "source") val source: String? = null,
+    @Json(name = "dimensions") val dimensions: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class NewsResultItem(
+    @Json(name = "title") val title: String,
+    @Json(name = "snippet") val snippet: String,
+    @Json(name = "url") val url: String,
+    @Json(name = "domain") val domain: String? = null,
+    @Json(name = "source") val source: String? = null,
+    @Json(name = "publishedTime") val publishedTime: String? = null,
+    @Json(name = "lang") val lang: String? = "EN"
+)
+
+@JsonClass(generateAdapter = true)
+data class SuggestResponse(
+    @Json(name = "query") val query: String? = null,
+    @Json(name = "suggestions") val suggestions: List<String>? = emptyList()
+)
+
 val DEFAULT_BANGS = listOf(
     BangShortcut("!yt", "YouTube", "Media", "https://www.youtube.com/results?search_query="),
     BangShortcut("!gh", "GitHub", "Dev", "https://github.com/search?q="),

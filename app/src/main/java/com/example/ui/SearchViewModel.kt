@@ -1,12 +1,21 @@
 package com.example.ui
 
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.data.local.AppDatabase
 import com.example.data.model.AiOverviewResponse
 import com.example.data.model.DEFAULT_BANGS
+import com.example.data.model.ImageResultItem
+import com.example.data.model.NewsResultItem
 import com.example.data.model.SearchResponse
 import com.example.data.model.SearchResultItem
 import com.example.data.repository.SarathSearchRepository
+import com.example.data.repository.SearchHistoryRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,8 +43,16 @@ data class SearchUiState(
     val activeQuery: String = "",
     val isSearching: Boolean = false,
     val isAiLoading: Boolean = false,
+    val isImagesLoading: Boolean = false,
+    val isNewsLoading: Boolean = false,
     val searchResponse: SearchResponse? = null,
     val aiOverviewResponse: AiOverviewResponse? = null,
+    val imageResults: List<ImageResultItem> = emptyList(),
+    val newsResults: List<NewsResultItem> = emptyList(),
+    val recentSearches: List<String> = emptyList(),
+    val suggestions: List<String> = emptyList(),
+    val isSuggesting: Boolean = false,
+    val activeInAppUrl: String? = null,
     val selectedLanguageFilter: LanguageFilter = LanguageFilter.ALL,
     val selectedTab: SearchTab = SearchTab.ALL,
     val sessionDarkMode: Boolean? = null, // null follows system, true/false session override
@@ -57,18 +74,85 @@ data class SearchUiState(
                 LanguageFilter.HI -> list.filter { it.lang?.equals("HI", ignoreCase = true) == true }
             }
         }
+
+    val filteredNewsResults: List<NewsResultItem>
+        get() {
+            return when (selectedLanguageFilter) {
+                LanguageFilter.ALL -> newsResults
+                LanguageFilter.EN -> newsResults.filter { it.lang?.equals("EN", ignoreCase = true) == true }
+                LanguageFilter.HI -> newsResults.filter { it.lang?.equals("HI", ignoreCase = true) == true }
+            }
+        }
 }
 
-class SearchViewModel(
-    private val repository: SarathSearchRepository = SarathSearchRepository()
-) : ViewModel() {
+class SearchViewModel @JvmOverloads constructor(
+    application: Application,
+    private val repository: SarathSearchRepository = SarathSearchRepository(),
+    private val historyRepository: SearchHistoryRepository = SearchHistoryRepository(
+        AppDatabase.getInstance(application).searchHistoryDao()
+    )
+) : AndroidViewModel(application) {
+
+    companion object {
+        fun provideFactory(application: Application): ViewModelProvider.Factory =
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    return SearchViewModel(application) as T
+                }
+            }
+    }
 
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
+    private var suggestionJob: Job? = null
+
+    init {
+        // Observe Room local search history reactively
+        viewModelScope.launch {
+            historyRepository.recentSearches.collect { recents ->
+                _uiState.update { it.copy(recentSearches = recents) }
+            }
+        }
+    }
+
     fun onQueryChange(newQuery: String) {
         val bang = checkBang(newQuery)
         _uiState.update { it.copy(query = newQuery, bangDetected = bang) }
+
+        // Asynchronous query suggestions with debounce
+        suggestionJob?.cancel()
+        val trimmed = newQuery.trim()
+        if (trimmed.isEmpty()) {
+            _uiState.update { it.copy(suggestions = emptyList(), isSuggesting = false) }
+            return
+        }
+
+        suggestionJob = viewModelScope.launch {
+            delay(180)
+            _uiState.update { it.copy(isSuggesting = true) }
+            val fetchedSuggestions = repository.fetchSuggestions(trimmed)
+            _uiState.update {
+                it.copy(
+                    suggestions = fetchedSuggestions,
+                    isSuggesting = false
+                )
+            }
+        }
+    }
+
+    fun selectSuggestion(suggestedQuery: String) {
+        // Clean bang triggers if present in parentheses e.g. "!yt (YouTube)"
+        val cleanQuery = if (suggestedQuery.startsWith("!") && suggestedQuery.contains("(")) {
+            suggestedQuery.substringBefore("(").trim() + " "
+        } else {
+            suggestedQuery
+        }
+        onQueryChange(cleanQuery)
+        if (!cleanQuery.endsWith(" ")) {
+            executeSearch(cleanQuery)
+        }
     }
 
     private fun checkBang(q: String): BangMatch? {
@@ -95,6 +179,11 @@ class SearchViewModel(
         val targetQuery = (customQuery ?: _uiState.value.query).trim()
         if (targetQuery.isEmpty()) return
 
+        // Persist to local Room database (last 5 queries, private)
+        viewModelScope.launch {
+            historyRepository.recordSearch(targetQuery)
+        }
+
         val bang = checkBang(targetQuery)
         if (bang != null && bang.remainingQuery.isNotEmpty()) {
             _uiState.update { it.copy(bangDetected = bang) }
@@ -106,13 +195,16 @@ class SearchViewModel(
                 activeQuery = targetQuery,
                 isSearching = true,
                 isAiLoading = true,
+                isImagesLoading = true,
+                isNewsLoading = true,
                 hasSearched = true,
                 errorMessage = null,
+                suggestions = emptyList(),
                 selectedTab = SearchTab.ALL
             )
         }
 
-        // Parallel fetch of /search and /ai-overview (Organic results NEVER wait for AI card)
+        // Parallel fetch of /search, /ai-overview, image results, and news results
         viewModelScope.launch {
             val duration = measureTimeMillis {
                 val searchRes = repository.fetchSearch(targetQuery, _uiState.value.regionBias)
@@ -135,6 +227,46 @@ class SearchViewModel(
                 )
             }
         }
+
+        viewModelScope.launch {
+            val images = repository.fetchImageResults(targetQuery)
+            _uiState.update {
+                it.copy(
+                    isImagesLoading = false,
+                    imageResults = images
+                )
+            }
+        }
+
+        viewModelScope.launch {
+            val news = repository.fetchNewsResults(targetQuery)
+            _uiState.update {
+                it.copy(
+                    isNewsLoading = false,
+                    newsResults = news
+                )
+            }
+        }
+    }
+
+    fun deleteHistoryItem(query: String) {
+        viewModelScope.launch {
+            historyRepository.removeSearch(query)
+        }
+    }
+
+    fun clearSearchHistory() {
+        viewModelScope.launch {
+            historyRepository.clearHistory()
+        }
+    }
+
+    fun openInAppUrl(url: String) {
+        _uiState.update { it.copy(activeInAppUrl = url) }
+    }
+
+    fun closeInAppUrl() {
+        _uiState.update { it.copy(activeInAppUrl = null) }
     }
 
     fun setLanguageFilter(filter: LanguageFilter) {
@@ -171,7 +303,8 @@ class SearchViewModel(
                 aiOverviewResponse = null,
                 bangDetected = null,
                 isSearching = false,
-                isAiLoading = false
+                isAiLoading = false,
+                suggestions = emptyList()
             )
         }
     }
@@ -186,3 +319,4 @@ class SearchViewModel(
         _uiState.update { it.copy(bangDetected = null) }
     }
 }
+

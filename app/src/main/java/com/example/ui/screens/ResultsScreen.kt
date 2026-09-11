@@ -32,9 +32,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
@@ -75,14 +74,17 @@ import com.example.ui.components.AIAnswerCard
 import com.example.ui.components.AiOverviewSkeletonCard
 import com.example.ui.components.DefaultErrorFallback
 import com.example.ui.components.ErrorBoundary
+import com.example.ui.components.ImagesResultView
 import com.example.ui.components.LanguagePillRow
+import com.example.ui.components.NewsResultView
 import com.example.ui.components.OrganicResultCard
 import com.example.ui.components.OrganicResultsSkeleton
 import com.example.ui.components.SearchInputBox
+import com.example.ui.components.SearchSuggestionsDropdown
 import com.example.ui.components.SearchTabBar
-import com.example.ui.components.TabComingSoonView
 import com.example.ui.components.WheelSpokeMark
 import com.example.ui.theme.LocalSarathColors
+import java.net.URLEncoder
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -90,11 +92,11 @@ fun ResultsScreen(
     uiState: SearchUiState,
     onQueryChange: (String) -> Unit,
     onSearchSubmit: (String?) -> Unit,
+    onSelectSuggestion: (String) -> Unit = {},
     onGoHome: () -> Unit,
     onFilterSelect: (LanguageFilter) -> Unit,
     onTabSelect: (SearchTab) -> Unit,
-    isDarkMode: Boolean,
-    onToggleTheme: () -> Unit,
+    onOpenUrl: (String) -> Unit,
     onToggleDebugView: () -> Unit,
     onFeedback: (String, Boolean) -> Unit,
     onDismissBang: () -> Unit,
@@ -110,13 +112,20 @@ fun ResultsScreen(
         rootFocusRequester.requestFocus()
     }
 
-    val openUrlInBrowser: (String) -> Unit = { url ->
-        try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(context, "Could not open URL: $url", Toast.LENGTH_SHORT).show()
+    // Share Search URL via Android ShareSheet
+    val shareCurrentSearchUrl = {
+        val encodedQuery = try {
+            URLEncoder.encode(uiState.activeQuery, "UTF-8")
+        } catch (_: Exception) {
+            uiState.activeQuery
         }
+        val searchUrl = "https://sarath.in/search?q=$encodedQuery"
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            putExtra(Intent.EXTRA_TEXT, searchUrl)
+            putExtra(Intent.EXTRA_SUBJECT, "Sarath Search: ${uiState.activeQuery}")
+            type = "text/plain"
+        }
+        context.startActivity(Intent.createChooser(sendIntent, "Share Search URL"))
     }
 
     Column(
@@ -148,7 +157,7 @@ fun ResultsScreen(
             .background(colors.bg)
             .statusBarsPadding()
     ) {
-        // Compact Top Bar with Wheel Mark, Input Box, Theme Toggle, Debug Toggle
+        // Compact Top Bar with Wheel Mark, Input Box, Share Search Button, Debug Toggle
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -171,31 +180,39 @@ fun ResultsScreen(
             Spacer(modifier = Modifier.width(8.dp))
 
             // Search input box (Compact mode)
-            SearchInputBox(
-                query = uiState.query,
-                onQueryChange = onQueryChange,
-                onSearchSubmit = { onSearchSubmit(null) },
-                isHero = false,
-                modifier = Modifier.weight(1f),
-                onVoiceClick = onVoiceClick,
-                onLensClick = onLensClick,
-                focusRequester = searchFocusRequester
-            )
+            Box(modifier = Modifier.weight(1f)) {
+                SearchInputBox(
+                    query = uiState.query,
+                    onQueryChange = onQueryChange,
+                    onSearchSubmit = { onSearchSubmit(null) },
+                    isHero = false,
+                    modifier = Modifier.fillMaxWidth(),
+                    onVoiceClick = onVoiceClick,
+                    onLensClick = onLensClick,
+                    focusRequester = searchFocusRequester
+                )
+            }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
-            // Theme toggle
+            // Share current Search URL button (uses Android ShareSheet)
             IconButton(
-                onClick = onToggleTheme,
-                modifier = Modifier.size(36.dp).testTag("results_theme_toggle")
+                onClick = shareCurrentSearchUrl,
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(colors.accentGold.copy(alpha = 0.12f))
+                    .testTag("share_search_url_button")
             ) {
                 Icon(
-                    imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
-                    contentDescription = "Toggle Theme",
+                    imageVector = Icons.Default.Share,
+                    contentDescription = "Share Current Search URL",
                     tint = colors.accentGold,
                     modifier = Modifier.size(18.dp)
                 )
             }
+
+            Spacer(modifier = Modifier.width(4.dp))
 
             // Dev / Debug View Toggle
             IconButton(
@@ -211,6 +228,18 @@ fun ResultsScreen(
                     contentDescription = "Debug View",
                     tint = if (uiState.showDebugView) colors.accentGold else colors.inkMuted,
                     modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
+        // Suggestions Dropdown overlay on ResultsScreen if typing query
+        if (uiState.suggestions.isNotEmpty()) {
+            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)) {
+                SearchSuggestionsDropdown(
+                    suggestions = uiState.suggestions,
+                    onSelectSuggestion = { sug ->
+                        onSelectSuggestion(sug)
+                    }
                 )
             }
         }
@@ -303,7 +332,7 @@ fun ResultsScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .background(colors.accentTeal.copy(alpha = 0.2f))
-                            .clickable { openUrlInBrowser(bang.redirectUrl) }
+                            .clickable { onOpenUrl(bang.redirectUrl) }
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                     IconButton(onClick = onDismissBang, modifier = Modifier.size(24.dp)) {
@@ -316,10 +345,34 @@ fun ResultsScreen(
         // Main Results Area
         when (uiState.selectedTab) {
             SearchTab.IMAGES -> {
-                TabComingSoonView(tabName = "Images", modifier = Modifier.weight(1f))
+                ImagesResultView(
+                    images = uiState.imageResults,
+                    isLoading = uiState.isImagesLoading,
+                    onOpenUrl = onOpenUrl,
+                    modifier = Modifier.weight(1f)
+                )
             }
             SearchTab.NEWS -> {
-                TabComingSoonView(tabName = "News", modifier = Modifier.weight(1f))
+                Column(modifier = Modifier.weight(1f)) {
+                    // Language filter pills for news
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        LanguagePillRow(
+                            selectedFilter = uiState.selectedLanguageFilter,
+                            onFilterSelect = onFilterSelect
+                        )
+                    }
+
+                    NewsResultView(
+                        news = uiState.filteredNewsResults,
+                        isLoading = uiState.isNewsLoading,
+                        onOpenUrl = onOpenUrl,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
             SearchTab.ALL -> {
                 val results = uiState.filteredResults
@@ -341,7 +394,8 @@ fun ResultsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
                         LanguagePillRow(
                             selectedFilter = uiState.selectedLanguageFilter,
-                            onFilterSelect = onFilterSelect
+                            onFilterSelect = onFilterSelect,
+                            modifier = Modifier.testTag("language_filter_pill_row")
                         )
                     }
 
@@ -358,7 +412,7 @@ fun ResultsScreen(
                                     AIAnswerCard(
                                         aiResponse = aiOverview ?: com.example.data.model.AiOverviewResponse(),
                                         isStreamingOrLoading = uiState.isAiLoading,
-                                        onOpenCitation = openUrlInBrowser
+                                        onOpenCitation = onOpenUrl
                                     )
                                 }
                             }
@@ -411,7 +465,7 @@ fun ResultsScreen(
                         item {
                             ZeroResultsView(
                                 query = uiState.activeQuery,
-                                onTrySuggestion = { suggestion ->
+                                onTrySuggestion = { suggestion: String ->
                                     onQueryChange(suggestion)
                                     onSearchSubmit(suggestion)
                                 }
@@ -420,7 +474,7 @@ fun ResultsScreen(
                     }
 
                     // Organic Results List wrapped with ErrorBoundary
-                    items(results, key = { it.url }) { item ->
+                    items(results, key = { it.url }) { item: com.example.data.model.SearchResultItem ->
                         ErrorBoundary(
                             componentName = "Search Result",
                             onRetry = { onSearchSubmit(null) }
@@ -429,7 +483,7 @@ fun ResultsScreen(
                                 result = item,
                                 isFeedbackGiven = uiState.feedbackGiven.contains(item.url),
                                 onFeedback = { isThumbsUp -> onFeedback(item.url, isThumbsUp) },
-                                onOpenUrl = openUrlInBrowser
+                                onOpenUrl = onOpenUrl
                             )
                         }
                     }

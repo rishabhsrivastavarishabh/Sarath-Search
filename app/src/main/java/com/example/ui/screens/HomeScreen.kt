@@ -67,10 +67,13 @@ fun HomeScreen(
     query: String,
     onQueryChange: (String) -> Unit,
     onSearchSubmit: (String?) -> Unit,
+    suggestions: List<String> = emptyList(),
+    onSelectSuggestion: (String) -> Unit = {},
+    recentSearches: List<String> = emptyList(),
+    onDeleteRecentQuery: (String) -> Unit = {},
+    onClearRecentSearches: () -> Unit = {},
     selectedFilter: LanguageFilter,
     onFilterSelect: (LanguageFilter) -> Unit,
-    isDarkMode: Boolean,
-    onToggleTheme: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenBangs: () -> Unit,
     onOpenPrivacy: () -> Unit,
@@ -131,7 +134,7 @@ fun HomeScreen(
                 .padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-        // Top action row (Theme toggle, Settings, Bangs, Debug)
+        // Top action row (Settings & Debug - Settings contains Theme & Bangs)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -178,27 +181,7 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Theme toggle (Sun / Moon)
-            IconButton(
-                onClick = onToggleTheme,
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(colors.surface)
-                    .border(1.dp, colors.border, CircleShape)
-                    .testTag("theme_toggle_button")
-            ) {
-                Icon(
-                    imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
-                    contentDescription = if (isDarkMode) "Switch to light theme" else "Switch to dark theme",
-                    tint = colors.accentGold,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Settings
+            // Settings (Theme and Bangs are accessible in Settings)
             IconButton(
                 onClick = onOpenSettings,
                 modifier = Modifier
@@ -210,8 +193,8 @@ fun HomeScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = "Search Settings",
-                    tint = colors.inkMuted,
+                    contentDescription = "Preferences and Settings",
+                    tint = colors.accentTeal,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -253,16 +236,29 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(28.dp))
 
         // Hero Search Input Box
-        SearchInputBox(
-            query = query,
-            onQueryChange = onQueryChange,
-            onSearchSubmit = { onSearchSubmit(null) },
-            isHero = true,
-            modifier = Modifier.fillMaxWidth(),
-            onVoiceClick = onVoiceClick,
-            onLensClick = onLensClick,
-            focusRequester = searchFocusRequester
-        )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                SearchInputBox(
+                    query = query,
+                    onQueryChange = onQueryChange,
+                    onSearchSubmit = { onSearchSubmit(null) },
+                    isHero = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    onVoiceClick = onVoiceClick,
+                    onLensClick = onLensClick,
+                    focusRequester = searchFocusRequester
+                )
+
+                // Asynchronous query suggestions dropdown
+                if (suggestions.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    com.example.ui.components.SearchSuggestionsDropdown(
+                        suggestions = suggestions,
+                        onSelectSuggestion = onSelectSuggestion
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(18.dp))
 
@@ -272,7 +268,21 @@ fun HomeScreen(
             onFilterSelect = onFilterSelect
         )
 
-        Spacer(modifier = Modifier.height(36.dp))
+        // Local-only Search History Section (Last 5 Room items)
+        if (recentSearches.isNotEmpty() && query.isBlank()) {
+            Spacer(modifier = Modifier.height(24.dp))
+            com.example.ui.components.RecentSearchesSection(
+                recentSearches = recentSearches,
+                onSelectQuery = { selectedQ ->
+                    onQueryChange(selectedQ)
+                    onSearchSubmit(selectedQ)
+                },
+                onDeleteQuery = onDeleteRecentQuery,
+                onClearAll = onClearRecentSearches
+            )
+        }
+
+        Spacer(modifier = Modifier.height(30.dp))
 
         // Trending Queries Section
         Row(
