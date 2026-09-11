@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Security
@@ -33,6 +34,8 @@ import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,8 +75,10 @@ fun HomeScreen(
     recentSearches: List<String> = emptyList(),
     onDeleteRecentQuery: (String) -> Unit = {},
     onClearRecentSearches: () -> Unit = {},
-    selectedFilter: LanguageFilter,
-    onFilterSelect: (LanguageFilter) -> Unit,
+    selectedFilter: LanguageFilter = LanguageFilter.ALL,
+    onFilterSelect: (LanguageFilter) -> Unit = {},
+    isAiMode: Boolean = false,
+    onToggleAiMode: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenBangs: () -> Unit,
     onOpenPrivacy: () -> Unit,
@@ -134,7 +139,7 @@ fun HomeScreen(
                 .padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-        // Top action row (Settings & Debug - Settings contains Theme & Bangs)
+        // Top action row (Clean & Minimal: Settings and Privacy)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -142,46 +147,27 @@ fun HomeScreen(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Bangs shortcut button
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(colors.accentGold.copy(alpha = 0.12f))
-                    .clickable { onOpenBangs() }
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                    .testTag("open_bangs_button")
-            ) {
-                Text(
-                    text = "!bangs",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.accentGold,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Debug toggle
+            // Privacy Commitment dialog trigger
             IconButton(
-                onClick = onToggleDebugView,
+                onClick = onOpenPrivacy,
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(if (showDebugView) colors.accentGold.copy(alpha = 0.2f) else colors.surface)
-                    .border(1.dp, if (showDebugView) colors.accentGold else colors.border, CircleShape)
-                    .testTag("toggle_debug_button")
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, CircleShape)
+                    .testTag("privacy_button")
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.BugReport,
-                    contentDescription = "Debug View",
-                    tint = if (showDebugView) colors.accentGold else colors.inkMuted,
+                    imageVector = Icons.Outlined.Shield,
+                    contentDescription = "Privacy Commitment",
+                    tint = colors.accentTeal,
                     modifier = Modifier.size(18.dp)
                 )
             }
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Settings (Theme and Bangs are accessible in Settings)
+            // Settings
             IconButton(
                 onClick = onOpenSettings,
                 modifier = Modifier
@@ -262,11 +248,135 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Language Pills (All · English · हिंदी)
-        LanguagePillRow(
-            selectedFilter = selectedFilter,
-            onFilterSelect = onFilterSelect
-        )
+        // AI Mode Interactive Toggle Card (Home Page feature)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(if (isAiMode) colors.accentTeal.copy(alpha = 0.10f) else colors.surface)
+                .border(
+                    width = 1.dp,
+                    color = if (isAiMode) colors.accentGold else colors.border,
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .clickable { onToggleAiMode() }
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .testTag("home_ai_mode_toggle_card")
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = if (isAiMode) colors.accentGold else colors.inkMuted,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "AI Mode",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.ink,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isAiMode) colors.accentGold.copy(alpha = 0.2f) else colors.border)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = if (isAiMode) "ENABLED" else "OFF",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isAiMode) colors.accentGold else colors.inkMuted,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = isAiMode,
+                        onCheckedChange = { onToggleAiMode() },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = colors.accentGold,
+                            checkedTrackColor = colors.accentGold.copy(alpha = 0.35f)
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = if (isAiMode) {
+                        "✨ Grounded AI synthesis active · Verified source citations alongside web results"
+                    } else {
+                        "Tap to enable AI Mode for real-time grounded summaries and structured overviews"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.inkMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
+
+                if (isAiMode) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Suggested AI Prompts:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.accentTeal,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            "Explain UPI 2026 rules",
+                            "Summarize Vande Bharat routes",
+                            "Aadhaar card update online steps"
+                        ).forEach { aiQuery ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(colors.surface)
+                                    .border(1.dp, colors.accentTeal.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        onQueryChange(aiQuery)
+                                        onSearchSubmit(aiQuery)
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = colors.accentGold,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = aiQuery,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.ink,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Local-only Search History Section (Last 5 Room items)
         if (recentSearches.isNotEmpty() && query.isBlank()) {

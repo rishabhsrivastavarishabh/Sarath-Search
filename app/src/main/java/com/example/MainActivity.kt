@@ -1,6 +1,7 @@
 package com.example
 
 import android.app.Application
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -10,6 +11,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +27,7 @@ import com.example.ui.components.LensSearchDialog
 import com.example.ui.components.PrivacyDialog
 import com.example.ui.components.SettingsDialog
 import com.example.ui.components.VoiceSearchDialog
+import com.example.ui.components.requestSetAsDefaultBrowser
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.ResultsScreen
 import com.example.ui.theme.SarathSearchTheme
@@ -33,23 +36,38 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val initialUrl = intent?.dataString
         setContent {
-            SarathSearchApp()
+            SarathSearchApp(initialUrl = initialUrl)
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 }
 
 @Composable
 fun SarathSearchApp(
+    initialUrl: String? = null,
     viewModel: SearchViewModel = viewModel(
         factory = SearchViewModel.provideFactory(
             LocalContext.current.applicationContext as Application
         )
     )
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val systemDark = isSystemInDarkTheme()
     val effectiveDarkMode = uiState.sessionDarkMode ?: systemDark
+
+    // Automatically open incoming web URLs when invoked as Default Browser
+    LaunchedEffect(initialUrl) {
+        if (!initialUrl.isNullOrBlank() && (initialUrl.startsWith("http://") || initialUrl.startsWith("https://"))) {
+            viewModel.openInAppUrl(initialUrl)
+        }
+    }
 
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showBangsDialog by remember { mutableStateOf(false) }
@@ -77,6 +95,8 @@ fun SarathSearchApp(
                     onClearRecentSearches = { viewModel.clearSearchHistory() },
                     selectedFilter = uiState.selectedLanguageFilter,
                     onFilterSelect = { viewModel.setLanguageFilter(it) },
+                    isAiMode = uiState.isAiMode,
+                    onToggleAiMode = { viewModel.toggleAiMode() },
                     onOpenSettings = { showSettingsDialog = true },
                     onOpenBangs = { showBangsDialog = true },
                     onOpenPrivacy = { showPrivacyDialog = true },
@@ -123,6 +143,13 @@ fun SarathSearchApp(
                     onToggleTheme = { viewModel.toggleDarkMode(effectiveDarkMode) },
                     showDebugView = uiState.showDebugView,
                     onToggleDebugView = { viewModel.toggleDebugView() },
+                    selectedLanguageFilter = uiState.selectedLanguageFilter,
+                    onLanguageFilterChange = { viewModel.setLanguageFilter(it) },
+                    adBlockerEnabled = uiState.adBlockerEnabled,
+                    onToggleAdBlocker = { viewModel.setAdBlocker(!uiState.adBlockerEnabled) },
+                    trackerShieldEnabled = uiState.trackerBlockerEnabled,
+                    onToggleTrackerShield = { viewModel.setTrackerBlocker(!uiState.trackerBlockerEnabled) },
+                    onSetDefaultBrowser = { requestSetAsDefaultBrowser(context) },
                     onSelectBang = { bangTrigger ->
                         viewModel.onQueryChange(bangTrigger)
                         showSettingsDialog = false

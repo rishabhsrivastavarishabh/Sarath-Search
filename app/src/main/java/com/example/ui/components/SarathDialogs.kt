@@ -30,6 +30,9 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.AlertDialog
@@ -56,6 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.DEFAULT_BANGS
+import com.example.ui.LanguageFilter
 import com.example.ui.theme.LocalSarathColors
 
 @Composable
@@ -157,6 +161,13 @@ fun SettingsDialog(
     onToggleTheme: () -> Unit,
     showDebugView: Boolean,
     onToggleDebugView: () -> Unit,
+    selectedLanguageFilter: LanguageFilter = LanguageFilter.ALL,
+    onLanguageFilterChange: (LanguageFilter) -> Unit = {},
+    adBlockerEnabled: Boolean = true,
+    onToggleAdBlocker: () -> Unit = {},
+    trackerShieldEnabled: Boolean = true,
+    onToggleTrackerShield: () -> Unit = {},
+    onSetDefaultBrowser: (() -> Unit)? = null,
     onSelectBang: ((String) -> Unit)? = null,
     onClearHistory: (() -> Unit)? = null,
     onDismiss: () -> Unit
@@ -189,6 +200,219 @@ fun SettingsDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
+                // Default Browser Integration Card
+                if (onSetDefaultBrowser != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(colors.accentGold.copy(alpha = 0.12f))
+                            .border(1.dp, colors.accentGold.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .clickable { onSetDefaultBrowser() }
+                            .padding(12.dp)
+                            .testTag("set_default_browser_card")
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = colors.accentGold,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Set as Default Browser",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = colors.ink,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Open links in Sarath with built-in ad blocker",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.inkMuted,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Set Default",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.accentGold,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = colors.border)
+                }
+
+                // Search Language Filter (Moved from Home Page to Settings)
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Language,
+                            contentDescription = null,
+                            tint = colors.accentTeal,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Search Language & Filter",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.ink,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Text(
+                        text = "Filter search results and news across languages",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.inkMuted,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val languages = listOf(
+                            Triple(LanguageFilter.ALL, "All", "All Languages"),
+                            Triple(LanguageFilter.EN, "English", "EN (India)"),
+                            Triple(LanguageFilter.HI, "हिंदी", "HI (Hindi)")
+                        )
+
+                        languages.forEach { (filter, shortLabel, fullLabel) ->
+                            val isSelected = selectedLanguageFilter == filter
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) colors.accentTeal.copy(alpha = 0.15f) else colors.surface)
+                                    .border(1.dp, if (isSelected) colors.accentTeal else colors.border, RoundedCornerShape(8.dp))
+                                    .clickable { onLanguageFilterChange(filter) }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = shortLabel,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (isSelected) colors.accentTeal else colors.ink,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = fullLabel,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.inkMuted,
+                                        fontSize = 9.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = colors.border)
+
+                // Built-in Ad Blocker & Browser Privacy Shields
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = colors.accentTeal,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Browser Ad Blocker & Shields",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.ink,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Text(
+                        text = "Built-in privacy protection for in-app web links",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.inkMuted,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                    )
+
+                    // AdBlocker Switch
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Sarath Ad Shield",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.ink,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Blocks banner ads, popups & ad scripts",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.inkMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = adBlockerEnabled,
+                            onCheckedChange = { onToggleAdBlocker() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = colors.accentTeal,
+                                checkedTrackColor = colors.accentTeal.copy(alpha = 0.3f)
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Tracker Shield Switch
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Tracker & Telemetry Blocker",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.ink,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Prevents third-party tracking scripts",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.inkMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = trackerShieldEnabled,
+                            onCheckedChange = { onToggleTrackerShield() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = colors.accentTeal,
+                                checkedTrackColor = colors.accentTeal.copy(alpha = 0.3f)
+                            )
+                        )
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = colors.border)
+
                 // Theme Selection
                 Row(
                     modifier = Modifier.fillMaxWidth(),

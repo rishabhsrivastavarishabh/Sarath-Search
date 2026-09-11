@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -240,6 +241,26 @@ fun VoiceSearchDialog(
 
     val dynamicScale = if (isListening) (baseScale + (speechRmsLevel * 0.03f)).coerceAtMost(1.45f) else 1.0f
 
+    val rippleScale by infiniteTransition.animateFloat(
+        initialValue = 1.0f,
+        targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rippleScale"
+    )
+
+    val rippleAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 0.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rippleAlpha"
+    )
+
     val sampleVoiceQueries = if (selectedVoiceLanguage == "hi-IN") {
         listOf(
             "सारथी ड्राइविंग लाइसेंस ऑनलाइन",
@@ -337,18 +358,35 @@ fun VoiceSearchDialog(
 
                 Spacer(modifier = Modifier.height(26.dp))
 
-                // Pulsing Mic Sphere
+                // Pulsing Mic Sphere with radiating acoustic waves
                 Box(
                     modifier = Modifier
-                        .size(100.dp)
-                        .scale(dynamicScale)
-                        .clip(CircleShape)
-                        .background(colors.accentGold.copy(alpha = if (isListening) 0.22f else 0.12f)),
+                        .size(130.dp),
                     contentAlignment = Alignment.Center
                 ) {
+                    if (isListening) {
+                        // Outer radiating ripple wave
+                        Box(
+                            modifier = Modifier
+                                .size(110.dp)
+                                .scale(rippleScale)
+                                .clip(CircleShape)
+                                .background(colors.accentGold.copy(alpha = rippleAlpha))
+                        )
+                        // Middle wave ring
+                        Box(
+                            modifier = Modifier
+                                .size(90.dp)
+                                .scale(dynamicScale)
+                                .clip(CircleShape)
+                                .background(colors.accentTeal.copy(alpha = 0.2f))
+                        )
+                    }
+
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
+                            .size(76.dp)
+                            .scale(if (isListening) dynamicScale else 1.0f)
                             .clip(CircleShape)
                             .background(if (isListening) colors.accentGold else colors.accentTeal)
                             .clickable { requestOrStartVoice() }
@@ -359,12 +397,22 @@ fun VoiceSearchDialog(
                             imageVector = if (isListening) Icons.Default.GraphicEq else Icons.Default.Mic,
                             contentDescription = if (isListening) "Listening active" else "Tap to speak",
                             tint = Color.White,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(38.dp)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Real-time dynamic audio waveform bars
+                AudioWaveformBars(
+                    isListening = isListening,
+                    rmsLevel = speechRmsLevel,
+                    barColor = if (isListening) colors.accentGold else colors.accentTeal.copy(alpha = 0.4f),
+                    modifier = Modifier.height(38.dp)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Live partial transcript or status
                 Text(
@@ -444,4 +492,65 @@ fun VoiceSearchDialog(
         containerColor = colors.surface,
         shape = RoundedCornerShape(20.dp)
     )
+}
+
+/**
+ * Animated dynamic waveform equalizer bars giving responsive visual feedback
+ * for active speech audio recognition and acoustic loudness level.
+ */
+@Composable
+fun AudioWaveformBars(
+    isListening: Boolean,
+    rmsLevel: Float,
+    barColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "waveformAnimation")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "phase"
+    )
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val barCount = 9
+        for (i in 0 until barCount) {
+            val offset = (i * 0.7f)
+            val sineWave = if (isListening) {
+                ((kotlin.math.sin(phase + offset).toFloat() + 1f) / 2f)
+            } else {
+                0.2f
+            }
+
+            // Normal height + amplitude boost from SpeechRecognizer rmsLevel
+            val rmsBoost = if (isListening) 16.dp * (rmsLevel.coerceIn(0f, 10f) / 10f) else 0.dp
+            val barHeight = if (isListening) {
+                (6.dp + (18.dp * sineWave) + rmsBoost)
+            } else {
+                6.dp
+            }
+
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(barHeight)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(
+                        if (isListening) {
+                            if (i % 2 == 0) barColor else barColor.copy(alpha = 0.75f)
+                        } else {
+                            barColor.copy(alpha = 0.25f)
+                        }
+                    )
+            )
+        }
+    }
 }

@@ -211,25 +211,6 @@ fun ResultsScreen(
                     modifier = Modifier.size(18.dp)
                 )
             }
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            // Dev / Debug View Toggle
-            IconButton(
-                onClick = onToggleDebugView,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(if (uiState.showDebugView) colors.accentGold.copy(alpha = 0.2f) else Color.Transparent)
-                    .testTag("results_debug_toggle")
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.BugReport,
-                    contentDescription = "Debug View",
-                    tint = if (uiState.showDebugView) colors.accentGold else colors.inkMuted,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
         }
 
         // Suggestions Dropdown overlay on ResultsScreen if typing query

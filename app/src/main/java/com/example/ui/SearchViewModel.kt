@@ -63,7 +63,13 @@ data class SearchUiState(
     val safeSearch: Boolean = true,
     val regionBias: String = "in", // "in" or "global"
     val bangDetected: BangMatch? = null,
-    val feedbackGiven: Set<String> = emptySet()
+    val feedbackGiven: Set<String> = emptySet(),
+    val isAiMode: Boolean = false,
+    val adBlockerEnabled: Boolean = true,
+    val trackerBlockerEnabled: Boolean = true,
+    val httpsOnlyEnabled: Boolean = true,
+    val desktopModeEnabled: Boolean = false,
+    val blockedAdsCount: Int = 0
 ) {
     val filteredResults: List<SearchResultItem>
         get() {
@@ -317,6 +323,38 @@ class SearchViewModel @JvmOverloads constructor(
 
     fun dismissBang() {
         _uiState.update { it.copy(bangDetected = null) }
+    }
+
+    fun toggleAiMode() {
+        _uiState.update { it.copy(isAiMode = !it.isAiMode) }
+    }
+
+    fun setAiMode(enabled: Boolean) {
+        _uiState.update { it.copy(isAiMode = enabled) }
+    }
+
+    fun setAdBlocker(enabled: Boolean) {
+        _uiState.update { it.copy(adBlockerEnabled = enabled) }
+    }
+
+    fun setTrackerBlocker(enabled: Boolean) {
+        _uiState.update { it.copy(trackerBlockerEnabled = enabled) }
+    }
+
+    fun setHttpsOnly(enabled: Boolean) {
+        _uiState.update { it.copy(httpsOnlyEnabled = enabled) }
+    }
+
+    fun setDesktopMode(enabled: Boolean) {
+        _uiState.update { it.copy(desktopModeEnabled = enabled) }
+    }
+
+    fun recordBlockedAd() {
+        _uiState.update { it.copy(blockedAdsCount = it.blockedAdsCount + 1) }
+    }
+
+    fun resetBlockedAds() {
+        _uiState.update { it.copy(blockedAdsCount = 0) }
     }
 }
 
