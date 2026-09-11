@@ -35,9 +35,19 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusTarget
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.LanguageFilter
+import com.example.ui.components.ErrorBoundary
 import com.example.ui.components.LanguagePillRow
 import com.example.ui.components.SearchInputBox
 import com.example.ui.components.WheelSpokeMark
@@ -65,10 +76,18 @@ fun HomeScreen(
     onOpenPrivacy: () -> Unit,
     onOpenAbout: () -> Unit,
     showDebugView: Boolean,
-    onToggleDebugView: () -> Unit
+    onToggleDebugView: () -> Unit,
+    onVoiceClick: () -> Unit,
+    onLensClick: () -> Unit
 ) {
     val colors = LocalSarathColors.current
     val scrollState = rememberScrollState()
+    val searchFocusRequester = remember { FocusRequester() }
+    val rootFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        rootFocusRequester.requestFocus()
+    }
 
     val trendingQueries = listOf(
         "UPI transaction limits 2026",
@@ -79,15 +98,39 @@ fun HomeScreen(
         "Ayushman Bharat Card"
     )
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colors.bg)
-            .statusBarsPadding()
-            .verticalScroll(scrollState)
-            .padding(horizontal = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+    ErrorBoundary(componentName = "Home Screen") {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .focusRequester(rootFocusRequester)
+                .focusTarget()
+                .onKeyEvent { keyEvent ->
+                    if (keyEvent.type == KeyEventType.KeyDown) {
+                        when (keyEvent.key) {
+                            Key.Slash -> {
+                                searchFocusRequester.requestFocus()
+                                true
+                            }
+                            Key.Escape -> {
+                                if (query.isNotEmpty()) {
+                                    onQueryChange("")
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            else -> false
+                        }
+                    } else {
+                        false
+                    }
+                }
+                .background(colors.bg)
+                .statusBarsPadding()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
         // Top action row (Theme toggle, Settings, Bangs, Debug)
         Row(
             modifier = Modifier
@@ -215,7 +258,10 @@ fun HomeScreen(
             onQueryChange = onQueryChange,
             onSearchSubmit = { onSearchSubmit(null) },
             isHero = true,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            onVoiceClick = onVoiceClick,
+            onLensClick = onLensClick,
+            focusRequester = searchFocusRequester
         )
 
         Spacer(modifier = Modifier.height(18.dp))
@@ -343,4 +389,5 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
     }
+}
 }

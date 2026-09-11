@@ -43,12 +43,25 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,8 +72,12 @@ import com.example.ui.LanguageFilter
 import com.example.ui.SearchTab
 import com.example.ui.SearchUiState
 import com.example.ui.components.AIAnswerCard
+import com.example.ui.components.AiOverviewSkeletonCard
+import com.example.ui.components.DefaultErrorFallback
+import com.example.ui.components.ErrorBoundary
 import com.example.ui.components.LanguagePillRow
 import com.example.ui.components.OrganicResultCard
+import com.example.ui.components.OrganicResultsSkeleton
 import com.example.ui.components.SearchInputBox
 import com.example.ui.components.SearchTabBar
 import com.example.ui.components.TabComingSoonView
@@ -80,10 +97,18 @@ fun ResultsScreen(
     onToggleTheme: () -> Unit,
     onToggleDebugView: () -> Unit,
     onFeedback: (String, Boolean) -> Unit,
-    onDismissBang: () -> Unit
+    onDismissBang: () -> Unit,
+    onVoiceClick: () -> Unit,
+    onLensClick: () -> Unit
 ) {
     val colors = LocalSarathColors.current
     val context = LocalContext.current
+    val searchFocusRequester = remember { FocusRequester() }
+    val rootFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        rootFocusRequester.requestFocus()
+    }
 
     val openUrlInBrowser: (String) -> Unit = { url ->
         try {
@@ -97,6 +122,29 @@ fun ResultsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .focusRequester(rootFocusRequester)
+            .focusTarget()
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown) {
+                    when (keyEvent.key) {
+                        Key.Slash -> {
+                            searchFocusRequester.requestFocus()
+                            true
+                        }
+                        Key.Escape -> {
+                            if (uiState.query.isNotEmpty()) {
+                                onQueryChange("")
+                            } else {
+                                onGoHome()
+                            }
+                            true
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
+            }
             .background(colors.bg)
             .statusBarsPadding()
     ) {
@@ -128,7 +176,10 @@ fun ResultsScreen(
                 onQueryChange = onQueryChange,
                 onSearchSubmit = { onSearchSubmit(null) },
                 isHero = false,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                onVoiceClick = onVoiceClick,
+                onLensClick = onLensClick,
+                focusRequester = searchFocusRequester
             )
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -281,6 +332,7 @@ fun ResultsScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite }
                         .testTag("results_list"),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
@@ -293,44 +345,69 @@ fun ResultsScreen(
                         )
                     }
 
-                    // Grounded AI Answer Card (Above organic results)
+                    // Grounded AI Answer Card with Error Boundary & Skeleton
                     if (showAiCard) {
                         item {
-                            AIAnswerCard(
-                                aiResponse = aiOverview ?: com.example.data.model.AiOverviewResponse(),
-                                isStreamingOrLoading = uiState.isAiLoading,
-                                onOpenCitation = openUrlInBrowser
-                            )
+                            ErrorBoundary(
+                                componentName = "AI Overview",
+                                onRetry = { onSearchSubmit(null) }
+                            ) {
+                                if (uiState.isAiLoading && (aiOverview == null || aiOverview.answer.isNullOrBlank())) {
+                                    AiOverviewSkeletonCard()
+                                } else {
+                                    AIAnswerCard(
+                                        aiResponse = aiOverview ?: com.example.data.model.AiOverviewResponse(),
+                                        isStreamingOrLoading = uiState.isAiLoading,
+                                        onOpenCitation = openUrlInBrowser
+                                    )
+                                }
+                            }
                         }
                     }
 
-                    // Searching progress indicator (only while searching initially)
-                    if (uiState.isSearching) {
+                    // Skeleton loaders for organic results during initial fetch
+                    if (uiState.isSearching && results.isEmpty()) {
+                        item {
+                            OrganicResultsSkeleton(count = 4)
+                        }
+                    } else if (uiState.isSearching) {
+                        // Incremental loading banner when results are already partially showing
                         item {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 24.dp),
+                                    .padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(24.dp),
+                                    modifier = Modifier.size(20.dp),
                                     color = colors.accentTeal,
-                                    strokeWidth = 2.5.dp
+                                    strokeWidth = 2.dp
                                 )
-                                Spacer(modifier = Modifier.width(12.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = "Searching meta-providers...",
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    text = "Updating search providers...",
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = colors.inkMuted
                                 )
                             }
                         }
                     }
 
+                    // Error state with ErrorBoundary fallback
+                    if (uiState.errorMessage != null && results.isEmpty() && !uiState.isSearching) {
+                        item {
+                            DefaultErrorFallback(
+                                componentName = "Search Results",
+                                errorMessage = uiState.errorMessage,
+                                onReset = { onSearchSubmit(null) }
+                            )
+                        }
+                    }
+
                     // Zero Results State per App Flow doc §6
-                    if (isZeroResults) {
+                    if (isZeroResults && uiState.errorMessage == null) {
                         item {
                             ZeroResultsView(
                                 query = uiState.activeQuery,
@@ -342,14 +419,19 @@ fun ResultsScreen(
                         }
                     }
 
-                    // Organic Results List
+                    // Organic Results List wrapped with ErrorBoundary
                     items(results, key = { it.url }) { item ->
-                        OrganicResultCard(
-                            result = item,
-                            isFeedbackGiven = uiState.feedbackGiven.contains(item.url),
-                            onFeedback = { isThumbsUp -> onFeedback(item.url, isThumbsUp) },
-                            onOpenUrl = openUrlInBrowser
-                        )
+                        ErrorBoundary(
+                            componentName = "Search Result",
+                            onRetry = { onSearchSubmit(null) }
+                        ) {
+                            OrganicResultCard(
+                                result = item,
+                                isFeedbackGiven = uiState.feedbackGiven.contains(item.url),
+                                onFeedback = { isThumbsUp -> onFeedback(item.url, isThumbsUp) },
+                                onOpenUrl = openUrlInBrowser
+                            )
+                        }
                     }
 
                     // Bottom spacer

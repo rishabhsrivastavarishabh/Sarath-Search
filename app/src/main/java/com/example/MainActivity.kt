@@ -19,8 +19,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.SearchViewModel
 import com.example.ui.components.AboutDialog
 import com.example.ui.components.BangsDialog
+import com.example.ui.components.LensSearchDialog
 import com.example.ui.components.PrivacyDialog
 import com.example.ui.components.SettingsDialog
+import com.example.ui.components.VoiceSearchDialog
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.ResultsScreen
 import com.example.ui.theme.SarathSearchTheme
@@ -47,6 +49,8 @@ fun SarathSearchApp(
     var showBangsDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var showVoiceSearchDialog by remember { mutableStateOf(false) }
+    var showLensSearchDialog by remember { mutableStateOf(false) }
 
     // System Back button returns to Home screen if currently showing results
     BackHandler(enabled = uiState.hasSearched) {
@@ -69,7 +73,9 @@ fun SarathSearchApp(
                     onOpenPrivacy = { showPrivacyDialog = true },
                     onOpenAbout = { showAboutDialog = true },
                     showDebugView = uiState.showDebugView,
-                    onToggleDebugView = { viewModel.toggleDebugView() }
+                    onToggleDebugView = { viewModel.toggleDebugView() },
+                    onVoiceClick = { showVoiceSearchDialog = true },
+                    onLensClick = { showLensSearchDialog = true }
                 )
             } else {
                 ResultsScreen(
@@ -83,7 +89,9 @@ fun SarathSearchApp(
                     onToggleTheme = { viewModel.toggleDarkMode(effectiveDarkMode) },
                     onToggleDebugView = { viewModel.toggleDebugView() },
                     onFeedback = { url, isUp -> viewModel.recordFeedback(url, isUp) },
-                    onDismissBang = { viewModel.dismissBang() }
+                    onDismissBang = { viewModel.dismissBang() },
+                    onVoiceClick = { showVoiceSearchDialog = true },
+                    onLensClick = { showLensSearchDialog = true }
                 )
             }
 
@@ -118,6 +126,28 @@ fun SarathSearchApp(
 
             if (showAboutDialog) {
                 AboutDialog(onDismiss = { showAboutDialog = false })
+            }
+
+            if (showVoiceSearchDialog) {
+                VoiceSearchDialog(
+                    onDismiss = { showVoiceSearchDialog = false },
+                    onVoiceResult = { spokenQuery ->
+                        showVoiceSearchDialog = false
+                        viewModel.onQueryChange(spokenQuery)
+                        viewModel.executeSearch(spokenQuery)
+                    }
+                )
+            }
+
+            if (showLensSearchDialog) {
+                LensSearchDialog(
+                    onDismiss = { showLensSearchDialog = false },
+                    onExecuteLensSearch = { detectedQuery ->
+                        showLensSearchDialog = false
+                        viewModel.onQueryChange(detectedQuery)
+                        viewModel.executeSearch(detectedQuery)
+                    }
+                )
             }
         }
     }

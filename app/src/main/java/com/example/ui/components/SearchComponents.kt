@@ -25,6 +25,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -38,6 +46,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.outlined.CenterFocusWeak
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.ThumbDown
@@ -87,15 +96,20 @@ fun SearchInputBox(
     onSearchSubmit: () -> Unit,
     modifier: Modifier = Modifier,
     isHero: Boolean = false,
-    placeholderText: String = "Search web, transit, civic services, or type !yt..."
+    placeholderText: String = "Search web, transit, civic services, or type !yt...",
+    onVoiceClick: (() -> Unit)? = null,
+    onLensClick: (() -> Unit)? = null,
+    focusRequester: FocusRequester? = null
 ) {
     val colors = LocalSarathColors.current
+    val effectiveFocusRequester = focusRequester ?: remember { FocusRequester() }
 
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
         modifier = modifier
             .fillMaxWidth()
+            .focusRequester(effectiveFocusRequester)
             .testTag(if (isHero) "hero_search_input" else "compact_search_input"),
         placeholder = {
             Text(
@@ -126,7 +140,7 @@ fun SearchInputBox(
                 if (query.isNotEmpty()) {
                     IconButton(
                         onClick = { onQueryChange("") },
-                        modifier = Modifier.size(36.dp).testTag("clear_query_button")
+                        modifier = Modifier.size(if (isHero) 36.dp else 30.dp).testTag("clear_query_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Clear,
@@ -135,11 +149,62 @@ fun SearchInputBox(
                             modifier = Modifier.size(18.dp)
                         )
                     }
+                } else {
+                    // Keyboard shortcut hint for desktop users
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(colors.border.copy(alpha = 0.5f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .semantics { contentDescription = "Shortcut press slash to focus" }
+                    ) {
+                        Text(
+                            text = "/",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.inkMuted,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
+
+                // Voice Search Button
+                if (onVoiceClick != null) {
+                    IconButton(
+                        onClick = onVoiceClick,
+                        modifier = Modifier.size(if (isHero) 38.dp else 30.dp).testTag("voice_search_icon_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "Voice Search",
+                            tint = colors.accentGold,
+                            modifier = Modifier.size(if (isHero) 22.dp else 18.dp)
+                        )
+                    }
+                }
+
+                // Lens Search Button
+                if (onLensClick != null) {
+                    IconButton(
+                        onClick = onLensClick,
+                        modifier = Modifier.size(if (isHero) 38.dp else 30.dp).testTag("lens_search_icon_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CenterFocusWeak,
+                            contentDescription = "Search with Lens",
+                            tint = colors.accentTeal,
+                            modifier = Modifier.size(if (isHero) 22.dp else 18.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(2.dp))
+
                 Box(
                     modifier = Modifier
                         .padding(end = 4.dp)
-                        .size(if (isHero) 40.dp else 34.dp)
+                        .size(if (isHero) 40.dp else 32.dp)
                         .clip(CircleShape)
                         .background(colors.accentTeal)
                         .clickable { onSearchSubmit() }
@@ -150,7 +215,7 @@ fun SearchInputBox(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = "Execute Search",
                         tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(if (isHero) 18.dp else 16.dp)
                     )
                 }
             }
@@ -330,11 +395,33 @@ fun AIAnswerCard(
 ) {
     val colors = LocalSarathColors.current
 
+    val percentVerified = if (aiResponse.confidence != null) "${(aiResponse.confidence * 100).toInt()} percent verified" else ""
+    val screenReaderSummary = buildString {
+        append("Sarath AI Grounded Answer. ")
+        if (!aiResponse.answer.isNullOrBlank()) {
+            append(aiResponse.answer)
+            append(". ")
+        }
+        if (percentVerified.isNotEmpty()) {
+            append("Confidence ")
+            append(percentVerified)
+            append(". ")
+        }
+        val count = aiResponse.citations?.size ?: 0
+        if (count > 0) {
+            append("$count cited web sources.")
+        }
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .border(1.dp, colors.accentGold.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .semantics {
+                heading()
+                contentDescription = screenReaderSummary
+            }
             .testTag("ai_answer_card"),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = colors.aiCardTint)
@@ -451,6 +538,10 @@ fun CitationChip(
             .background(colors.surface)
             .border(1.dp, colors.border, RoundedCornerShape(8.dp))
             .clickable { onClick() }
+            .semantics {
+                role = Role.Button
+                contentDescription = "Citation ${citation.n}: ${citation.domain ?: "Source"}. Double tap to open source link."
+            }
             .padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -504,6 +595,20 @@ fun OrganicResultCard(
     val colors = LocalSarathColors.current
     val context = LocalContext.current
 
+    val isHindi = (result.lang?.uppercase() ?: "EN") == "HI"
+    val accessibilityLabel = buildString {
+        append("Search Result: ")
+        append(result.title)
+        append(". Source domain: ")
+        append(result.domain ?: result.source ?: "web")
+        append(". Language: ")
+        append(if (isHindi) "Hindi" else "English")
+        if (!result.snippet.isNullOrBlank()) {
+            append(". Snippet: ")
+            append(result.snippet)
+        }
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -553,12 +658,14 @@ fun OrganicResultCard(
 
                 // Server-computed Language Badge (EN / HI)
                 val lang = result.lang?.uppercase() ?: "EN"
-                val isHindi = lang == "HI"
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
                         .background(if (isHindi) SarathBadgeHi.copy(alpha = 0.15f) else SarathBadgeEn.copy(alpha = 0.15f))
                         .padding(horizontal = 7.dp, vertical = 2.dp)
+                        .semantics {
+                            contentDescription = if (isHindi) "Language: Hindi" else "Language: English"
+                        }
                 ) {
                     Text(
                         text = if (isHindi) "HI · हिंदी" else "EN · English",
@@ -581,6 +688,11 @@ fun OrganicResultCard(
                 lineHeight = 22.sp,
                 modifier = Modifier
                     .clickable { onOpenUrl(result.url) }
+                    .semantics {
+                        heading()
+                        role = Role.Button
+                        contentDescription = "$accessibilityLabel. Double tap to open article."
+                    }
                     .testTag("result_title_${result.url.hashCode()}")
             )
 
@@ -609,12 +721,16 @@ fun OrganicResultCard(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .clickable { onOpenUrl(result.url) }
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = "Visit article at ${result.domain ?: result.url}"
+                            }
                             .padding(horizontal = 6.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = "Open Link",
+                            contentDescription = null,
                             tint = colors.accentTeal,
                             modifier = Modifier.size(15.dp)
                         )
@@ -640,7 +756,7 @@ fun OrganicResultCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "Copy Link",
+                            contentDescription = "Copy Link for ${result.title}",
                             tint = colors.inkMuted,
                             modifier = Modifier.size(15.dp)
                         )
@@ -660,7 +776,7 @@ fun OrganicResultCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
-                            contentDescription = "Share Link",
+                            contentDescription = "Share Link for ${result.title}",
                             tint = colors.inkMuted,
                             modifier = Modifier.size(15.dp)
                         )
@@ -678,7 +794,7 @@ fun OrganicResultCard(
                     ) {
                         Icon(
                             imageVector = if (isFeedbackGiven) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
-                            contentDescription = "Helpful",
+                            contentDescription = "Mark ${result.title} as helpful",
                             tint = if (isFeedbackGiven) colors.accentTeal else colors.inkMuted,
                             modifier = Modifier.size(15.dp)
                         )
@@ -692,7 +808,7 @@ fun OrganicResultCard(
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.ThumbDown,
-                            contentDescription = "Not helpful",
+                            contentDescription = "Mark ${result.title} as not helpful",
                             tint = colors.inkMuted,
                             modifier = Modifier.size(15.dp)
                         )
