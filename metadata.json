@@ -1,0 +1,6 @@
+{
+  "name": "Sarath Search",
+  "description": "Fast, private, India-first search engine with grounded AI answers and bilingual English-Hindi support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
